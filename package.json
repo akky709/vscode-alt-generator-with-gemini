@@ -1,0 +1,184 @@
+{
+  "name": "alt-tag-generator",
+  "displayName": "ALT Generator with Gemini",
+  "description": "Auto-generate ALT attributes for img tags using Gemini API (supports HTML/PHP/JSX/TSX with static paths)",
+  "version": "1.0.0",
+  "publisher": "akky",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akky/vscode-alt-generator-with-gemini"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "files": [
+    "out/**/*.js",
+    "images/**",
+    "README.md",
+    "LICENSE",
+    "node_modules/node-fetch/**",
+    "node_modules/whatwg-url/**",
+    "node_modules/tr46/**",
+    "node_modules/webidl-conversions/**"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "alt-generator.generateAlt",
+        "title": "Generate ALT attribute for img tags"
+      },
+      {
+        "command": "alt-generator.generateVideoAriaLabel",
+        "title": "Generate aria-label attribute for video tags"
+      }
+    ],
+    "configuration": {
+      "title": "ALT Generator with Gemini",
+      "properties": {
+        "altGenerator.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))",
+          "editPresentation": "singlelineText"
+        },
+        "altGenerator.generationMode": {
+          "type": "string",
+          "default": "SEO",
+          "enum": [
+            "SEO",
+            "A11Y"
+          ],
+          "enumDescriptions": [
+            "SEO: Content optimized for search engines and crawlers",
+            "A11Y: Content optimized for screen reader users"
+          ],
+          "enumItemLabels": [
+            "SEO",
+            "A11Y"
+          ],
+          "description": "ALT generation mode"
+        },
+        "altGenerator.geminiApiModel": {
+          "type": "string",
+          "default": "gemini-2.5-flash",
+          "enum": [
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash-exp"
+          ],
+          "enumDescriptions": [
+            "Fast, generous free tier (recommended)",
+            "High accuracy, limited free tier",
+            "Provided for compatibility. Support may end in the future (not recommended)"
+          ],
+          "enumItemLabels": [
+            "Gemini Flash 2.5 (Recommended)",
+            "Gemini Pro 2.5",
+            "Gemini 2.0 Flash (Experimental)"
+          ],
+          "markdownDescription": "Gemini API model to use"
+        },
+        "altGenerator.decorativeKeywords": {
+          "type": "array",
+          "default": [
+            "icon-",
+            "bg-",
+            "deco-"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Keywords to identify decorative images (sets alt=\"\" if filename contains these)"
+        },
+        "altGenerator.insertionMode": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "confirm"
+          ],
+          "enumDescriptions": [
+            "Insert generated ALT tags immediately",
+            "Review before insertion"
+          ],
+          "enumItemLabels": [
+            "Auto",
+            "Manual"
+          ],
+          "description": "ALT and aria-label insertion mode"
+        },
+        "altGenerator.outputLanguage": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "ja",
+            "en"
+          ],
+          "enumItemLabels": [
+            "Auto",
+            "日本語",
+            "English"
+          ],
+          "description": "Output language for generated ALT and aria-label"
+        },
+        "altGenerator.promptSeo": {
+          "type": "string",
+          "default": "",
+          "editPresentation": "multilineText",
+          "markdownDescription": "Custom prompt for SEO mode. Leave empty to use built-in defaults. See README for details."
+        },
+        "altGenerator.promptA11y": {
+          "type": "string",
+          "default": "",
+          "editPresentation": "multilineText",
+          "markdownDescription": "Custom prompt for A11Y mode. Leave empty to use built-in defaults. See README for details."
+        },
+        "altGenerator.promptVideo": {
+          "type": "string",
+          "default": "",
+          "editPresentation": "multilineText",
+          "markdownDescription": "Custom prompt for video aria-label. Leave empty to use built-in defaults. See README for details."
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "alt-generator.generateAlt",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "alt-generator.generateVideoAriaLabel",
+        "key": "ctrl+alt+v",
+        "mac": "cmd+alt+v",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/node-fetch": "^2.6.13",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.12"
+  }
+}

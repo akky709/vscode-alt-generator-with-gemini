@@ -116,12 +116,12 @@ Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
 Or edit `settings.json`:
 ```json
 {
-  "altGenerator.geminiApiKey": "YOUR_API_KEY",
-  "altGenerator.geminiApiModel": "gemini-2.5-flash",
-  "altGenerator.generationMode": "SEO",
-  "altGenerator.insertionMode": "auto",
-  "altGenerator.outputLanguage": "auto",
-  "altGenerator.decorativeKeywords": ["icon-", "bg-", "deco-"]
+  "altGenGemini.geminiApiKey": "YOUR_API_KEY",
+  "altGenGemini.geminiApiModel": "gemini-2.5-flash",
+  "altGenGemini.generationMode": "SEO",
+  "altGenGemini.insertionMode": "auto",
+  "altGenGemini.outputLanguage": "auto",
+  "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"]
 }
 ```
 

@@ -110,26 +110,10 @@ function formatMessage(message: string, ...args: any[]): string {
     return message;
 }
 
-// 設定値を取得するヘルパー関数（新旧キー名両方に対応）
-function getConfig<T>(newKey: string, oldKey: string, defaultValue: T): T {
-    // 新しいキー構造 (alt.xxx) を優先
-    const newConfig = vscode.workspace.getConfiguration('alt');
-    const newValue = newConfig.get<T>(newKey);
-    if (newValue !== undefined) {
-        return newValue;
-    }
-    // 古いキー構造 (altGenerator.xxx) にフォールバック
-    const oldConfig = vscode.workspace.getConfiguration('altGenerator');
-    const oldValue = oldConfig.get<T>(oldKey);
-    if (oldValue !== undefined) {
-        return oldValue;
-    }
-    return defaultValue;
-}
-
 // ALT生成言語を取得する関数
 function getOutputLanguage(): string {
-    const langSetting = getConfig<string>('outputLanguage', 'output.language', 'auto');
+    const config = vscode.workspace.getConfiguration('altGenGemini');
+    const langSetting = config.get<string>('outputLanguage', 'auto');
 
     if (langSetting === 'auto') {
         const vscodeLang = vscode.env.language;
@@ -369,7 +353,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // 設定変更を監視してAPIキーを保存・マスク化
     const configWatcher = vscode.workspace.onDidChangeConfiguration(async (e) => {
-        if (e.affectsConfiguration('alt.geminiApiKey') || e.affectsConfiguration('altGenerator.geminiApiKey')) {
+        if (e.affectsConfiguration('altGenGemini.geminiApiKey')) {
             await handleApiKeyChange(context);
         }
     });
@@ -438,15 +422,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // APIキーを完全に削除するコマンド（デバッグ用）
     let clearApiKeyDisposable = vscode.commands.registerCommand('alt-generator.clearApiKey', async () => {
-        await context.secrets.delete('alt.geminiApiKey');
-        const newConfig = vscode.workspace.getConfiguration('alt');
-        await newConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
-        await newConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
-        // 古いキーも削除
-        await context.secrets.delete('altGenerator.geminiApiKey');
-        const oldConfig = vscode.workspace.getConfiguration('altGenerator');
-        await oldConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
-        await oldConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
+        await context.secrets.delete('altGenGemini.geminiApiKey');
+        const config = vscode.workspace.getConfiguration('altGenGemini');
+        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
+        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
         vscode.window.showInformationMessage('✅ API Key cleared from all storage locations');
         console.log('[ALT Generator] API key manually cleared');
     });
@@ -456,8 +435,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 // 設定変更時のAPIキー処理
 async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<void> {
-    const newConfig = vscode.workspace.getConfiguration('alt');
-    const displayedKey = getConfig<string>('geminiApiKey', 'geminiApiKey', '');
+    const config = vscode.workspace.getConfiguration('altGenGemini');
+    const displayedKey = config.get<string>('geminiApiKey', '');
 
     console.log('[ALT Generator] handleApiKeyChange called');
     console.log('[ALT Generator] displayedKey:', displayedKey ? `${displayedKey.substring(0, 4)}...` : 'empty');
@@ -465,9 +444,9 @@ async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<voi
     // 空の場合はAPIキーを削除
     if (!displayedKey || displayedKey.trim() === '') {
         console.log('[ALT Generator] Deleting API key from secrets...');
-        await context.secrets.delete('alt.geminiApiKey');
-        await newConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
-        await newConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
+        await context.secrets.delete('altGenGemini.geminiApiKey');
+        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
+        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
         console.log('[ALT Generator] API key deleted successfully');
         vscode.window.showInformationMessage('✅ API Key deleted from settings');
         return;
@@ -481,33 +460,23 @@ async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<voi
 
     console.log('[ALT Generator] Storing new API key...');
     // 新しいAPIキーとして保存
-    await context.secrets.store('alt.geminiApiKey', displayedKey);
+    await context.secrets.store('altGenGemini.geminiApiKey', displayedKey);
 
     // 設定画面に伏せ字で表示
     const maskedKey = displayedKey.length > 4
         ? '.'.repeat(displayedKey.length - 4) + displayedKey.substring(displayedKey.length - 4)
         : '.'.repeat(displayedKey.length);
 
-    await newConfig.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
-    await newConfig.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
+    await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
+    await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
     console.log('[ALT Generator] New API key stored and masked');
 }
 
 // 起動時にAPIキーを伏せ字表示
 async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<void> {
-    const newConfig = vscode.workspace.getConfiguration('alt');
-    const displayedKey = newConfig.get<string>('geminiApiKey') || '';
-    let storedKey = await context.secrets.get('alt.geminiApiKey');
-
-    // 古いキーからの移行チェック
-    if (!storedKey) {
-        const oldStoredKey = await context.secrets.get('altGenerator.geminiApiKey');
-        if (oldStoredKey) {
-            await context.secrets.store('alt.geminiApiKey', oldStoredKey);
-            storedKey = oldStoredKey;
-            console.log('[ALT Generator] Migrated API key from old storage');
-        }
-    }
+    const config = vscode.workspace.getConfiguration('altGenGemini');
+    const displayedKey = config.get<string>('geminiApiKey', '');
+    const storedKey = await context.secrets.get('altGenGemini.geminiApiKey');
 
     console.log('[ALT Generator] maskApiKeyInSettings called');
     console.log('[ALT Generator] displayedKey length:', displayedKey.length);
@@ -516,7 +485,7 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
     // 設定画面が空の場合、Secretsも削除（settings.jsonを直接編集して削除した場合に対応）
     if (!displayedKey || displayedKey.trim() === '') {
         if (storedKey && storedKey.trim() !== '') {
-            await context.secrets.delete('alt.geminiApiKey');
+            await context.secrets.delete('altGenGemini.geminiApiKey');
         }
         return;
     }
@@ -528,7 +497,7 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
     if (!isAlreadyMasked) {
         console.log('[ALT Generator] Masking API key...');
         // Secretsに保存
-        await context.secrets.store('alt.geminiApiKey', displayedKey);
+        await context.secrets.store('altGenGemini.geminiApiKey', displayedKey);
 
         // マスク表示に変換
         const maskedKey = displayedKey.length > 4
@@ -538,8 +507,8 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
         console.log('[ALT Generator] Masked key:', maskedKey);
 
         // GlobalとWorkspace両方を更新
-        await newConfig.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
-        await newConfig.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
+        await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
+        await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
 
         console.log('[ALT Generator] API key masked successfully');
     }
@@ -547,17 +516,7 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
 
 // 安全なストレージからAPIキーを取得
 async function getApiKey(context: vscode.ExtensionContext): Promise<string | undefined> {
-    let apiKey = await context.secrets.get('alt.geminiApiKey');
-    // 古いキーからフォールバック
-    if (!apiKey) {
-        apiKey = await context.secrets.get('altGenerator.geminiApiKey');
-        if (apiKey) {
-            // 新しいストレージに移行
-            await context.secrets.store('alt.geminiApiKey', apiKey);
-            console.log('[ALT Generator] Migrated API key to new storage');
-        }
-    }
-    return apiKey;
+    return await context.secrets.get('altGenGemini.geminiApiKey');
 }
 
 // 複数タグ（imgとvideoの混在）を処理する関数
@@ -567,7 +526,8 @@ async function processMultipleTags(
     imgTags: Array<{type: 'img' | 'video', range: vscode.Range, text: string}>,
     videoTags: Array<{type: 'img' | 'video', range: vscode.Range, text: string}>
 ) {
-    const insertionMode = getConfig<string>('insertionMode', 'insertion.mode', 'auto');
+    const config = vscode.workspace.getConfiguration('altGenGemini');
+    const insertionMode = config.get<string>('insertionMode', 'auto');
     const totalCount = imgTags.length + videoTags.length;
 
     // 初期タイトルを決定
@@ -771,7 +731,8 @@ function detectStaticFileDirectory(workspacePath: string): string | null {
 async function generateAltForImages(context: vscode.ExtensionContext, editor: vscode.TextEditor, selections: readonly vscode.Selection[]) {
 
         // 挿入モード設定を取得
-        const insertionMode = getConfig<string>('insertionMode', 'insertion.mode', 'auto');
+        const config = vscode.workspace.getConfiguration('altGenGemini');
+        const insertionMode = config.get<string>('insertionMode', 'auto');
 
         // 常に進捗ダイアログを表示
         await vscode.window.withProgress({
@@ -898,7 +859,8 @@ async function processVideoTag(
     const mimeType = getVideoMimeType(videoPath);
 
     const apiKey = await getApiKey(context);
-    const geminiModel = getConfig<string>('geminiApiModel', 'api.model', 'gemini-2.5-flash');
+    const config = vscode.workspace.getConfiguration('altGenGemini');
+    const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
 
     if (!apiKey) {
         vscode.window.showErrorMessage('Gemini API key is not configured. Please set your API key in VSCode settings.');
@@ -933,7 +895,7 @@ async function processVideoTag(
     }
 
     // autoモードの場合は自動挿入
-    const insertionMode = getConfig<string>('insertionMode', 'insertion.mode', 'auto');
+    const insertionMode = config.get<string>('insertionMode', 'auto');
     if (insertionMode === 'auto') {
         // エディタが有効かチェック
         if (editor && editor === vscode.window.activeTextEditor) {
@@ -1054,7 +1016,8 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
 
         // Gemini APIキーとモデル設定を取得
         const apiKey = await getApiKey(context);
-        const geminiModel = getConfig<string>('geminiApiModel', 'geminiApiModel', 'gemini-2.5-flash');
+        const config = vscode.workspace.getConfiguration('altGenGemini');
+        const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
 
         if (!apiKey) {
             vscode.window.showErrorMessage('Gemini API key is not configured. Please run "Set Gemini API Key" command.');
@@ -1231,7 +1194,8 @@ async function processImgTag(
     }
 
     // 装飾画像の検出
-    const decorativeKeywords = getConfig<string[]>('decorativeKeywords', 'decorativeKeywords', ['icon-', 'bg-', 'deco-']);
+    const config = vscode.workspace.getConfiguration('altGenGemini');
+    const decorativeKeywords = config.get<string[]>('decorativeKeywords', ['icon-', 'bg-', 'deco-']);
 
     const isDecorativeImage = decorativeKeywords.some(keyword =>
         imageFileName.toLowerCase().includes(keyword.toLowerCase())
@@ -1351,8 +1315,8 @@ async function processImgTag(
 
     // Gemini APIキー、生成モード、モデル設定を取得
     const apiKey = await getApiKey(context);
-    const generationMode = getConfig<string>('generationMode', 'generationMode', 'SEO');
-    const geminiModel = getConfig<string>('geminiApiModel', 'geminiApiModel', 'gemini-2.5-flash');
+    const generationMode = config.get<string>('generationMode', 'SEO');
+    const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
 
     if (!apiKey) {
         vscode.window.showErrorMessage('Gemini API key is not configured. Please set your API key in VSCode settings.');
@@ -1362,8 +1326,8 @@ async function processImgTag(
     // 周辺テキストを取得（A11Yモードかつ設定が有効な場合）
     let surroundingText: string | undefined;
     if (generationMode === 'A11Y') {
-        const contextEnabled = getConfig<boolean>('a11yContextEnabled', 'a11yContextEnabled', true);
-        const contextRange = getConfig<number>('a11yContextRange', 'a11yContextRange', 1500);
+        const contextEnabled = config.get<boolean>('a11yContextEnabled', true);
+        const contextRange = config.get<number>('a11yContextRange', 1500);
 
         if (contextEnabled) {
             surroundingText = extractSurroundingText(document, actualSelection, contextRange);
@@ -1480,18 +1444,19 @@ async function generateAltText(apiKey: string, base64Image: string, mimeType: st
     const outputLang = getOutputLanguage();
 
     // 設定からプロンプトを取得
+    const config = vscode.workspace.getConfiguration('altGenGemini');
     let prompt: string;
     const languageConstraint = outputLang === 'ja' ? '\n5. Respond only in Japanese.' : '';
 
     if (mode === 'A11Y') {
         // A11Yモード - 設定からプロンプトを取得
-        const customPrompt = getConfig<string>('promptA11y', 'promptA11y', '');
+        const customPrompt = config.get<string>('promptA11y', '');
         if (customPrompt && customPrompt.trim() !== '') {
             prompt = customPrompt + languageConstraint;
         } else {
             // デフォルトプロンプト
             // 文字数設定を取得
-            const descriptionLength = getConfig<string>('a11yDescriptionLength', 'a11yDescriptionLength', 'standard');
+            const descriptionLength = config.get<string>('a11yDescriptionLength', 'standard');
 
             let charLengthConstraint: string;
             if (outputLang === 'ja') {
@@ -1539,7 +1504,7 @@ Return only the generated ALT text. No other conversation or explanation is requ
         }
     } else {
         // SEOモード - 設定からプロンプトを取得
-        const customPrompt = getConfig<string>('promptSeo', 'promptSeo', '');
+        const customPrompt = config.get<string>('promptSeo', '');
         if (customPrompt && customPrompt.trim() !== '') {
             prompt = customPrompt + languageConstraint;
         } else {
@@ -1682,7 +1647,8 @@ async function generateVideoAriaLabel(apiKey: string, base64Video: string, mimeT
     const languageConstraint = outputLang === 'ja' ? '\n5. Respond only in Japanese.' : '';
 
     // 設定からプロンプトを取得
-    const customPrompt = getConfig<string>('promptVideo', 'promptVideo', '');
+    const config = vscode.workspace.getConfiguration('altGenGemini');
+    const customPrompt = config.get<string>('promptVideo', '');
 
     let prompt: string;
     if (customPrompt && customPrompt.trim() !== '') {

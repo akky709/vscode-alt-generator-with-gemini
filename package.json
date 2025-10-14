@@ -46,7 +46,7 @@
     ],
     "configuration": {
       "properties": {
-        "alt.geminiApiKey": {
+        "altGenGemini.geminiApiKey": {
           "order": 0,
           "type": "string",
           "default": "",
@@ -54,7 +54,7 @@
           "markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))  \n\n**Note:** The API key is stored securely and displayed as dots for security.  \n[Clear API Key](command:alt-generator.clearApiKey)",
           "editPresentation": "singlelineText"
         },
-        "alt.geminiApiModel": {
+        "altGenGemini.geminiApiModel": {
           "order": 1,
           "type": "string",
           "default": "gemini-2.5-flash",
@@ -76,7 +76,7 @@
           "description": "Gemini API Model",
           "markdownDescription": "Gemini API model to use"
         },
-        "alt.generationMode": {
+        "altGenGemini.generationMode": {
           "order": 2,
           "type": "string",
           "default": "SEO",
@@ -94,7 +94,7 @@
           ],
           "description": "Generation Mode"
         },
-        "alt.a11yDescriptionLength": {
+        "altGenGemini.a11yDescriptionLength": {
           "order": 3,
           "type": "string",
           "default": "standard",
@@ -113,7 +113,7 @@
           "description": "A11Y Description Length",
           "markdownDescription": "**A11Y mode only:** Control the level of detail in generated ALT text descriptions.  \n\n**Standard** (Recommended): Provides clear, essential information without being verbose. Suitable for most images.  \n**Detailed**: Includes comprehensive details about colors, layout, emotions, and context. Best for complex images or when detailed description is critical for understanding.  \n\n**Note:** The surrounding text analysis feature already helps avoid redundancy, so both options maintain good accessibility."
         },
-        "alt.insertionMode": {
+        "altGenGemini.insertionMode": {
           "order": 4,
           "type": "string",
           "default": "auto",
@@ -131,7 +131,7 @@
           ],
           "description": "Insertion Mode"
         },
-        "alt.outputLanguage": {
+        "altGenGemini.outputLanguage": {
           "order": 5,
           "type": "string",
           "default": "auto",
@@ -147,7 +147,7 @@
           ],
           "description": "Output Language"
         },
-        "alt.decorativeKeywords": {
+        "altGenGemini.decorativeKeywords": {
           "order": 6,
           "type": "array",
           "default": [
@@ -160,7 +160,7 @@
           },
           "description": "Decorative Image Keywords"
         },
-        "alt.promptSeo": {
+        "altGenGemini.promptSeo": {
           "order": 7,
           "type": "string",
           "default": "",
@@ -168,7 +168,7 @@
           "description": "Custom Prompt for SEO Mode",
           "markdownDescription": "Custom prompt for SEO mode. Leave empty to use built-in defaults. See README for details."
         },
-        "alt.promptA11y": {
+        "altGenGemini.promptA11y": {
           "order": 8,
           "type": "string",
           "default": "",
@@ -176,7 +176,7 @@
           "description": "Custom Prompt for A11Y Mode",
           "markdownDescription": "Custom prompt for A11Y mode. Leave empty to use built-in defaults. See README for details."
         },
-        "alt.promptVideo": {
+        "altGenGemini.promptVideo": {
           "order": 9,
           "type": "string",
           "default": "",
@@ -184,14 +184,14 @@
           "description": "Custom Prompt for Video Mode",
           "markdownDescription": "Custom prompt for video aria-label. Leave empty to use built-in defaults. See README for details."
         },
-        "alt.a11yContextEnabled": {
+        "altGenGemini.a11yContextEnabled": {
           "order": 10,
           "type": "boolean",
           "default": true,
           "description": "A11Y: Analyze Surrounding Text",
           "markdownDescription": "**A11Y mode only:** Analyze surrounding text to avoid redundant ALT descriptions.  \n\n**How it works:**  \n- Finds parent elements (like `<section>`, `<div>`) containing the image  \n- Sends the text within those elements to Gemini AI along with the image  \n- If the text already describes the image, sets `alt=\"\"` to prevent double reading by screen readers  \n\n**Note:** This increases token usage (~100-400 tokens per image) but significantly improves accessibility."
         },
-        "alt.a11yContextRange": {
+        "altGenGemini.a11yContextRange": {
           "order": 11,
           "type": "number",
           "default": 1500,

@@ -581,12 +581,12 @@ async function processMultipleTags(
 
                     if (choice === 'Insert') {
                         // エディタが有効かチェック
-                        if (editor && editor === vscode.window.activeTextEditor) {
+                        if (editor && !editor.document.isClosed) {
                             await editor.edit(editBuilder => {
                                 editBuilder.replace(result.actualSelection, result.newText);
                             });
                         } else {
-                            vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                            vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
                             return;
                         }
                     } else if (choice === 'Cancel') {
@@ -630,12 +630,12 @@ async function processMultipleTags(
 
                 if (choice === 'Insert') {
                     // エディタが有効かチェック
-                    if (editor && editor === vscode.window.activeTextEditor) {
+                    if (editor && !editor.document.isClosed) {
                         await editor.edit(editBuilder => {
                             editBuilder.replace(selection, result.newText);
                         });
                     } else {
-                        vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                        vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
                         return;
                     }
                 } else if (choice === 'Cancel') {
@@ -764,12 +764,12 @@ async function generateAltForImages(context: vscode.ExtensionContext, editor: vs
 
                         if (choice === 'Insert') {
                             // エディタが有効かチェック
-                            if (editor && editor === vscode.window.activeTextEditor) {
+                            if (editor && !editor.document.isClosed) {
                                 await editor.edit(editBuilder => {
                                     editBuilder.replace(result.actualSelection, result.newText);
                                 });
                             } else {
-                                vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                                vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
                                 return;
                             }
                         } else if (choice === 'Cancel') {
@@ -898,13 +898,13 @@ async function processVideoTag(
     const insertionMode = config.get<string>('insertionMode', 'auto');
     if (insertionMode === 'auto') {
         // エディタが有効かチェック
-        if (editor && editor === vscode.window.activeTextEditor) {
+        if (editor && !editor.document.isClosed) {
             await editor.edit(editBuilder => {
                 editBuilder.replace(selection, newText);
             });
             vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
         } else {
-            vscode.window.showWarningMessage('Editor was switched during aria-label generation. Please try again.');
+            vscode.window.showWarningMessage('Editor was closed during aria-label generation. Please try again.');
         }
     } else {
         // confirmモード用に結果を返す
@@ -1071,13 +1071,13 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
 
                 // テキストを置換
                 // エディタが有効かチェック
-                if (editor && editor === vscode.window.activeTextEditor) {
+                if (editor && !editor.document.isClosed) {
                     await editor.edit(editBuilder => {
                         editBuilder.replace(actualSelection, newText);
                     });
                     vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
                 } else {
-                    vscode.window.showWarningMessage('Editor was switched during aria-label generation. Please try again.');
+                    vscode.window.showWarningMessage('Editor was closed during aria-label generation. Please try again.');
                 }
             } catch (error) {
                 // キャンセルエラーは無視
@@ -1218,13 +1218,13 @@ async function processImgTag(
 
         if (insertionMode === 'auto') {
             // エディタが有効かチェック
-            if (editor && editor === vscode.window.activeTextEditor) {
+            if (editor && !editor.document.isClosed) {
                 await editor.edit(editBuilder => {
                     editBuilder.replace(actualSelection, newText);
                 });
                 vscode.window.showInformationMessage('Detected as decorative image: alt="" was set');
             } else {
-                vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
             }
         } else {
             return {selection, altText: 'Detected as decorative image. Empty alt will be inserted.', newText, actualSelection};
@@ -1373,13 +1373,13 @@ async function processImgTag(
 
             if (insertionMode === 'auto') {
                 // エディタが有効かチェック
-                if (editor && editor === vscode.window.activeTextEditor) {
+                if (editor && !editor.document.isClosed) {
                     await editor.edit(editBuilder => {
                         editBuilder.replace(actualSelection, newText);
                     });
                     vscode.window.showInformationMessage('Image is already described by surrounding text: alt="" was set');
                 } else {
-                    vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                    vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
                 }
             } else {
                 return {selection, altText: 'Image is already described by surrounding text. Empty alt will be inserted.', newText, actualSelection};
@@ -1411,13 +1411,13 @@ async function processImgTag(
         if (insertionMode === 'auto') {
             // 自動挿入モード
             // エディタが有効かチェック
-            if (editor && editor === vscode.window.activeTextEditor) {
+            if (editor && !editor.document.isClosed) {
                 await editor.edit(editBuilder => {
                     editBuilder.replace(actualSelection, newText);
                 });
                 vscode.window.showInformationMessage(formatMessage('ALT attribute generated: {0}', altText));
             } else {
-                vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
             }
         } else {
             // 確認後挿入モード

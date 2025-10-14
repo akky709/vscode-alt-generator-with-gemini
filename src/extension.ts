@@ -110,10 +110,26 @@ function formatMessage(message: string, ...args: any[]): string {
     return message;
 }
 
+// 設定値を取得するヘルパー関数（新旧キー名両方に対応）
+function getConfig<T>(newKey: string, oldKey: string, defaultValue: T): T {
+    // 新しいキー構造 (alt.xxx) を優先
+    const newConfig = vscode.workspace.getConfiguration('alt');
+    const newValue = newConfig.get<T>(newKey);
+    if (newValue !== undefined) {
+        return newValue;
+    }
+    // 古いキー構造 (altGenerator.xxx) にフォールバック
+    const oldConfig = vscode.workspace.getConfiguration('altGenerator');
+    const oldValue = oldConfig.get<T>(oldKey);
+    if (oldValue !== undefined) {
+        return oldValue;
+    }
+    return defaultValue;
+}
+
 // ALT生成言語を取得する関数
 function getOutputLanguage(): string {
-    const config = vscode.workspace.getConfiguration('altGenerator');
-    const langSetting = config.get<string>('outputLanguage') || 'en';
+    const langSetting = getConfig<string>('outputLanguage', 'output.language', 'auto');
 
     if (langSetting === 'auto') {
         const vscodeLang = vscode.env.language;
@@ -121,6 +137,128 @@ function getOutputLanguage(): string {
     }
 
     return langSetting;
+}
+
+// HTMLタグを除去してテキストコンテンツのみを取得
+function stripHtmlTags(text: string): string {
+    return text
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ') // scriptタグとその内容を削除
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ') // styleタグとその内容を削除
+        .replace(/<[^>]+>/g, ' ') // その他のHTMLタグを削除
+        .replace(/\s+/g, ' ') // 連続する空白を1つにまとめる
+        .trim();
+}
+
+// 親要素を検出して範囲を返す
+function findParentElement(fullText: string, imageStart: number, imageEnd: number, maxSearch: number = 5000): { start: number; end: number; tagName: string } | null {
+    // 画像位置から後方に検索（最大maxSearch文字まで）
+    const searchStart = Math.max(0, imageStart - maxSearch);
+    const searchText = fullText.substring(searchStart, imageEnd);
+    const relativeImageStart = imageStart - searchStart;
+
+    // 一般的なブロック要素のパターン
+    const blockTags = ['div', 'section', 'article', 'main', 'aside', 'header', 'footer', 'nav', 'figure', 'li', 'td', 'th', 'p', 'blockquote'];
+    const tagPattern = new RegExp(`<(${blockTags.join('|')})[\\s>]`, 'gi');
+
+    let closestParent: { start: number; end: number; tagName: string } | null = null;
+    let closestDistance = Infinity;
+
+    // 開始タグを探す
+    let match;
+    while ((match = tagPattern.exec(searchText)) !== null) {
+        const openTagStart = match.index;
+        const tagName = match[1].toLowerCase();
+
+        // 画像より後ろのタグは無視
+        if (openTagStart >= relativeImageStart) {
+            continue;
+        }
+
+        // 対応する終了タグを探す
+        const closeTagPattern = new RegExp(`</${tagName}>`, 'i');
+        const remainingText = fullText.substring(searchStart + openTagStart);
+        const closeMatch = closeTagPattern.exec(remainingText);
+
+        if (closeMatch) {
+            const closeTagEnd = openTagStart + closeMatch.index + closeMatch[0].length;
+            const absoluteCloseTagEnd = searchStart + closeTagEnd;
+
+            // 画像がこの要素内に含まれているか確認
+            if (absoluteCloseTagEnd > imageEnd) {
+                const distance = relativeImageStart - openTagStart;
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestParent = {
+                        start: searchStart + openTagStart,
+                        end: absoluteCloseTagEnd,
+                        tagName: tagName
+                    };
+                }
+            }
+        }
+    }
+
+    return closestParent;
+}
+
+// 画像タグの周辺テキストを取得（構造的アプローチ）
+function extractSurroundingText(
+    document: vscode.TextDocument,
+    tagRange: vscode.Range,
+    contextRange: number
+): string {
+    const fullText = document.getText();
+    const imageStart = document.offsetAt(tagRange.start);
+    const imageEnd = document.offsetAt(tagRange.end);
+
+    const collectedTexts: string[] = [];
+    let currentImageStart = imageStart;
+    let currentImageEnd = imageEnd;
+    let level = 0;
+    const maxLevels = 3;
+
+    // 最大3階層まで親要素をさかのぼる
+    while (level < maxLevels) {
+        const parent = findParentElement(fullText, currentImageStart, currentImageEnd, contextRange);
+
+        if (!parent) {
+            break; // これ以上親要素が見つからない
+        }
+
+        // 親要素内のテキストを抽出（画像タグ自体は除外）
+        const beforeImage = fullText.substring(parent.start, imageStart);
+        const afterImage = fullText.substring(imageEnd, parent.end);
+
+        // HTMLタグを除去
+        const cleanedBefore = stripHtmlTags(beforeImage).trim();
+        const cleanedAfter = stripHtmlTags(afterImage).trim();
+
+        // テキストを収集
+        if (cleanedBefore.length > 0) {
+            collectedTexts.push(`[Text in <${parent.tagName}> before image]: ${cleanedBefore}`);
+        }
+        if (cleanedAfter.length > 0) {
+            collectedTexts.push(`[Text in <${parent.tagName}> after image]: ${cleanedAfter}`);
+        }
+
+        // 十分なテキストが集まったら終了（最低50文字）
+        const totalLength = cleanedBefore.length + cleanedAfter.length;
+        if (totalLength >= 50) {
+            break;
+        }
+
+        // 次の階層へ（親の親を探す）
+        currentImageStart = parent.start;
+        currentImageEnd = parent.end;
+        level++;
+    }
+
+    // テキストが見つからなかった場合
+    if (collectedTexts.length === 0) {
+        return '[No surrounding text found]';
+    }
+
+    return '[IMAGE LOCATION]\n' + collectedTexts.join('\n');
 }
 
 // カーソル位置のタグタイプを検出
@@ -231,7 +369,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // 設定変更を監視してAPIキーを保存・マスク化
     const configWatcher = vscode.workspace.onDidChangeConfiguration(async (e) => {
-        if (e.affectsConfiguration('altGenerator.geminiApiKey')) {
+        if (e.affectsConfiguration('alt.geminiApiKey') || e.affectsConfiguration('altGenerator.geminiApiKey')) {
             await handleApiKeyChange(context);
         }
     });
@@ -297,68 +435,129 @@ export async function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(videoDisposable);
+
+    // APIキーを完全に削除するコマンド（デバッグ用）
+    let clearApiKeyDisposable = vscode.commands.registerCommand('alt-generator.clearApiKey', async () => {
+        await context.secrets.delete('alt.geminiApiKey');
+        const newConfig = vscode.workspace.getConfiguration('alt');
+        await newConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
+        await newConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
+        // 古いキーも削除
+        await context.secrets.delete('altGenerator.geminiApiKey');
+        const oldConfig = vscode.workspace.getConfiguration('altGenerator');
+        await oldConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
+        await oldConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
+        vscode.window.showInformationMessage('✅ API Key cleared from all storage locations');
+        console.log('[ALT Generator] API key manually cleared');
+    });
+
+    context.subscriptions.push(clearApiKeyDisposable);
 }
 
 // 設定変更時のAPIキー処理
 async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<void> {
-    const config = vscode.workspace.getConfiguration('altGenerator');
-    const displayedKey = config.get<string>('geminiApiKey') || '';
+    const newConfig = vscode.workspace.getConfiguration('alt');
+    const displayedKey = getConfig<string>('geminiApiKey', 'geminiApiKey', '');
+
+    console.log('[ALT Generator] handleApiKeyChange called');
+    console.log('[ALT Generator] displayedKey:', displayedKey ? `${displayedKey.substring(0, 4)}...` : 'empty');
 
     // 空の場合はAPIキーを削除
     if (!displayedKey || displayedKey.trim() === '') {
-        await context.secrets.delete('altGenerator.geminiApiKey');
-        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
+        console.log('[ALT Generator] Deleting API key from secrets...');
+        await context.secrets.delete('alt.geminiApiKey');
+        await newConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
+        await newConfig.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
+        console.log('[ALT Generator] API key deleted successfully');
         vscode.window.showInformationMessage('✅ API Key deleted from settings');
         return;
     }
 
     // 既にマスク済みの場合は何もしない（*や.を含む場合）
     if (displayedKey.includes('*') || /^\.+/.test(displayedKey)) {
+        console.log('[ALT Generator] API key is already masked, skipping...');
         return;
     }
 
+    console.log('[ALT Generator] Storing new API key...');
     // 新しいAPIキーとして保存
-    await context.secrets.store('altGenerator.geminiApiKey', displayedKey);
+    await context.secrets.store('alt.geminiApiKey', displayedKey);
 
     // 設定画面に伏せ字で表示
     const maskedKey = displayedKey.length > 4
         ? '.'.repeat(displayedKey.length - 4) + displayedKey.substring(displayedKey.length - 4)
         : '.'.repeat(displayedKey.length);
 
-    await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
+    await newConfig.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
+    await newConfig.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
+    console.log('[ALT Generator] New API key stored and masked');
 }
 
 // 起動時にAPIキーを伏せ字表示
 async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<void> {
-    const config = vscode.workspace.getConfiguration('altGenerator');
-    const displayedKey = config.get<string>('geminiApiKey') || '';
-    const storedKey = await context.secrets.get('altGenerator.geminiApiKey');
+    const newConfig = vscode.workspace.getConfiguration('alt');
+    const displayedKey = newConfig.get<string>('geminiApiKey') || '';
+    let storedKey = await context.secrets.get('alt.geminiApiKey');
+
+    // 古いキーからの移行チェック
+    if (!storedKey) {
+        const oldStoredKey = await context.secrets.get('altGenerator.geminiApiKey');
+        if (oldStoredKey) {
+            await context.secrets.store('alt.geminiApiKey', oldStoredKey);
+            storedKey = oldStoredKey;
+            console.log('[ALT Generator] Migrated API key from old storage');
+        }
+    }
+
+    console.log('[ALT Generator] maskApiKeyInSettings called');
+    console.log('[ALT Generator] displayedKey length:', displayedKey.length);
+    console.log('[ALT Generator] storedKey exists:', !!storedKey);
 
     // 設定画面が空の場合、Secretsも削除（settings.jsonを直接編集して削除した場合に対応）
     if (!displayedKey || displayedKey.trim() === '') {
         if (storedKey && storedKey.trim() !== '') {
-            await context.secrets.delete('altGenerator.geminiApiKey');
+            await context.secrets.delete('alt.geminiApiKey');
         }
         return;
     }
 
     // 設定画面にマスクされていない生のAPIキーがある場合
-    if (!displayedKey.includes('*') && !/^\.+/.test(displayedKey)) {
+    const isAlreadyMasked = displayedKey.includes('*') || /^\.+/.test(displayedKey);
+    console.log('[ALT Generator] isAlreadyMasked:', isAlreadyMasked);
+
+    if (!isAlreadyMasked) {
+        console.log('[ALT Generator] Masking API key...');
         // Secretsに保存
-        await context.secrets.store('altGenerator.geminiApiKey', displayedKey);
+        await context.secrets.store('alt.geminiApiKey', displayedKey);
 
         // マスク表示に変換
         const maskedKey = displayedKey.length > 4
             ? '.'.repeat(displayedKey.length - 4) + displayedKey.substring(displayedKey.length - 4)
             : '.'.repeat(displayedKey.length);
 
-        await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
+        console.log('[ALT Generator] Masked key:', maskedKey);
+
+        // GlobalとWorkspace両方を更新
+        await newConfig.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
+        await newConfig.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
+
+        console.log('[ALT Generator] API key masked successfully');
     }
 }
 
 // 安全なストレージからAPIキーを取得
 async function getApiKey(context: vscode.ExtensionContext): Promise<string | undefined> {
-    return await context.secrets.get('altGenerator.geminiApiKey');
+    let apiKey = await context.secrets.get('alt.geminiApiKey');
+    // 古いキーからフォールバック
+    if (!apiKey) {
+        apiKey = await context.secrets.get('altGenerator.geminiApiKey');
+        if (apiKey) {
+            // 新しいストレージに移行
+            await context.secrets.store('alt.geminiApiKey', apiKey);
+            console.log('[ALT Generator] Migrated API key to new storage');
+        }
+    }
+    return apiKey;
 }
 
 // 複数タグ（imgとvideoの混在）を処理する関数
@@ -368,8 +567,7 @@ async function processMultipleTags(
     imgTags: Array<{type: 'img' | 'video', range: vscode.Range, text: string}>,
     videoTags: Array<{type: 'img' | 'video', range: vscode.Range, text: string}>
 ) {
-    const config = vscode.workspace.getConfiguration('altGenerator');
-    const insertionMode = config.get<string>('insertionMode') || 'auto';
+    const insertionMode = getConfig<string>('insertionMode', 'insertion.mode', 'auto');
     const totalCount = imgTags.length + videoTags.length;
 
     // 初期タイトルを決定
@@ -422,9 +620,15 @@ async function processMultipleTags(
                     );
 
                     if (choice === 'Insert') {
-                        await editor.edit(editBuilder => {
-                            editBuilder.replace(result.actualSelection, result.newText);
-                        });
+                        // エディタが有効かチェック
+                        if (editor && editor === vscode.window.activeTextEditor) {
+                            await editor.edit(editBuilder => {
+                                editBuilder.replace(result.actualSelection, result.newText);
+                            });
+                        } else {
+                            vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                            return;
+                        }
                     } else if (choice === 'Cancel') {
                         vscode.window.showWarningMessage(formatMessage('ALT attribute generation cancelled ({0}/{1} items processed)', processedCount + 1, totalCount));
                         return;
@@ -465,9 +669,15 @@ async function processMultipleTags(
                 );
 
                 if (choice === 'Insert') {
-                    await editor.edit(editBuilder => {
-                        editBuilder.replace(selection, result.newText);
-                    });
+                    // エディタが有効かチェック
+                    if (editor && editor === vscode.window.activeTextEditor) {
+                        await editor.edit(editBuilder => {
+                            editBuilder.replace(selection, result.newText);
+                        });
+                    } else {
+                        vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                        return;
+                    }
                 } else if (choice === 'Cancel') {
                     vscode.window.showWarningMessage(formatMessage('ALT attribute generation cancelled ({0}/{1} items processed)', processedCount + 1, totalCount));
                     return;
@@ -561,8 +771,7 @@ function detectStaticFileDirectory(workspacePath: string): string | null {
 async function generateAltForImages(context: vscode.ExtensionContext, editor: vscode.TextEditor, selections: readonly vscode.Selection[]) {
 
         // 挿入モード設定を取得
-        const config = vscode.workspace.getConfiguration('altGenerator');
-        const insertionMode = config.get<string>('insertionMode') || 'auto';
+        const insertionMode = getConfig<string>('insertionMode', 'insertion.mode', 'auto');
 
         // 常に進捗ダイアログを表示
         await vscode.window.withProgress({
@@ -593,9 +802,15 @@ async function generateAltForImages(context: vscode.ExtensionContext, editor: vs
                         );
 
                         if (choice === 'Insert') {
-                            await editor.edit(editBuilder => {
-                                editBuilder.replace(result.actualSelection, result.newText);
-                            });
+                            // エディタが有効かチェック
+                            if (editor && editor === vscode.window.activeTextEditor) {
+                                await editor.edit(editBuilder => {
+                                    editBuilder.replace(result.actualSelection, result.newText);
+                                });
+                            } else {
+                                vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                                return;
+                            }
                         } else if (choice === 'Cancel') {
                             vscode.window.showWarningMessage(formatMessage('ALT tag generation cancelled ({0}/{1} items processed)', processedCount + 1, totalCount));
                             return;
@@ -682,9 +897,8 @@ async function processVideoTag(
     const base64Video = videoBuffer.toString('base64');
     const mimeType = getVideoMimeType(videoPath);
 
-    const config = vscode.workspace.getConfiguration('altGenerator');
     const apiKey = await getApiKey(context);
-    const geminiModel = config.get<string>('geminiApiModel') || 'gemini-2.5-flash';
+    const geminiModel = getConfig<string>('geminiApiModel', 'api.model', 'gemini-2.5-flash');
 
     if (!apiKey) {
         vscode.window.showErrorMessage('Gemini API key is not configured. Please set your API key in VSCode settings.');
@@ -719,12 +933,17 @@ async function processVideoTag(
     }
 
     // autoモードの場合は自動挿入
-    const insertionMode = config.get<string>('insertionMode') || 'auto';
+    const insertionMode = getConfig<string>('insertionMode', 'insertion.mode', 'auto');
     if (insertionMode === 'auto') {
-        await editor.edit(editBuilder => {
-            editBuilder.replace(selection, newText);
-        });
-        vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
+        // エディタが有効かチェック
+        if (editor && editor === vscode.window.activeTextEditor) {
+            await editor.edit(editBuilder => {
+                editBuilder.replace(selection, newText);
+            });
+            vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
+        } else {
+            vscode.window.showWarningMessage('Editor was switched during aria-label generation. Please try again.');
+        }
     } else {
         // confirmモード用に結果を返す
         return { newText, ariaLabel };
@@ -834,9 +1053,8 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
         const mimeType = getVideoMimeType(videoPath);
 
         // Gemini APIキーとモデル設定を取得
-        const config = vscode.workspace.getConfiguration('altGenerator');
         const apiKey = await getApiKey(context);
-        const geminiModel = config.get<string>('geminiApiModel') || 'gemini-2.5-flash';
+        const geminiModel = getConfig<string>('geminiApiModel', 'geminiApiModel', 'gemini-2.5-flash');
 
         if (!apiKey) {
             vscode.window.showErrorMessage('Gemini API key is not configured. Please run "Set Gemini API Key" command.');
@@ -889,11 +1107,15 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
                 }
 
                 // テキストを置換
-                await editor.edit(editBuilder => {
-                    editBuilder.replace(actualSelection, newText);
-                });
-
-                vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
+                // エディタが有効かチェック
+                if (editor && editor === vscode.window.activeTextEditor) {
+                    await editor.edit(editBuilder => {
+                        editBuilder.replace(actualSelection, newText);
+                    });
+                    vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
+                } else {
+                    vscode.window.showWarningMessage('Editor was switched during aria-label generation. Please try again.');
+                }
             } catch (error) {
                 // キャンセルエラーは無視
                 if (token.isCancellationRequested) {
@@ -1009,8 +1231,7 @@ async function processImgTag(
     }
 
     // 装飾画像の検出
-    const config = vscode.workspace.getConfiguration('altGenerator');
-    const decorativeKeywords = config.get<string[]>('decorativeKeywords') || ['icon-', 'bg-'];
+    const decorativeKeywords = getConfig<string[]>('decorativeKeywords', 'decorativeKeywords', ['icon-', 'bg-', 'deco-']);
 
     const isDecorativeImage = decorativeKeywords.some(keyword =>
         imageFileName.toLowerCase().includes(keyword.toLowerCase())
@@ -1032,10 +1253,15 @@ async function processImgTag(
         }
 
         if (insertionMode === 'auto') {
-            await editor.edit(editBuilder => {
-                editBuilder.replace(actualSelection, newText);
-            });
-            vscode.window.showInformationMessage('Detected as decorative image: alt="" was set');
+            // エディタが有効かチェック
+            if (editor && editor === vscode.window.activeTextEditor) {
+                await editor.edit(editBuilder => {
+                    editBuilder.replace(actualSelection, newText);
+                });
+                vscode.window.showInformationMessage('Detected as decorative image: alt="" was set');
+            } else {
+                vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+            }
         } else {
             return {selection, altText: 'Detected as decorative image. Empty alt will be inserted.', newText, actualSelection};
         }
@@ -1125,12 +1351,23 @@ async function processImgTag(
 
     // Gemini APIキー、生成モード、モデル設定を取得
     const apiKey = await getApiKey(context);
-    const generationMode = config.get<string>('generationMode') || 'SEO';
-    const geminiModel = config.get<string>('geminiApiModel') || 'gemini-2.5-flash';
+    const generationMode = getConfig<string>('generationMode', 'generationMode', 'SEO');
+    const geminiModel = getConfig<string>('geminiApiModel', 'geminiApiModel', 'gemini-2.5-flash');
 
     if (!apiKey) {
         vscode.window.showErrorMessage('Gemini API key is not configured. Please set your API key in VSCode settings.');
         return;
+    }
+
+    // 周辺テキストを取得（A11Yモードかつ設定が有効な場合）
+    let surroundingText: string | undefined;
+    if (generationMode === 'A11Y') {
+        const contextEnabled = getConfig<boolean>('a11yContextEnabled', 'a11yContextEnabled', true);
+        const contextRange = getConfig<number>('a11yContextRange', 'a11yContextRange', 1500);
+
+        if (contextEnabled) {
+            surroundingText = extractSurroundingText(document, actualSelection, contextRange);
+        }
     }
 
     // Gemini APIを呼び出してALTテキストを生成
@@ -1148,10 +1385,42 @@ async function processImgTag(
             return;
         }
 
-        const altText = await generateAltText(apiKey, base64Image, mimeType, generationMode, geminiModel, token);
+        const altText = await generateAltText(apiKey, base64Image, mimeType, generationMode, geminiModel, token, surroundingText);
 
         // キャンセルチェック
         if (token?.isCancellationRequested) {
+            return;
+        }
+
+        // "DECORATIVE"判定の場合は空のALTを設定
+        if (altText.trim() === 'DECORATIVE') {
+            const hasAlt = /alt=["'{][^"'}]*["'}]/.test(selectedText);
+            let newText: string;
+            if (hasAlt) {
+                newText = selectedText.replace(/alt=["'{][^"'}]*["'}]/, 'alt=""');
+            } else {
+                // <imgと<Imageタグの両方に対応
+                if (selectedText.includes('<Image')) {
+                    newText = selectedText.replace(/<Image/, '<Image alt=""');
+                } else {
+                    newText = selectedText.replace(/<img/, '<img alt=""');
+                }
+            }
+
+            if (insertionMode === 'auto') {
+                // エディタが有効かチェック
+                if (editor && editor === vscode.window.activeTextEditor) {
+                    await editor.edit(editBuilder => {
+                        editBuilder.replace(actualSelection, newText);
+                    });
+                    vscode.window.showInformationMessage('Image is already described by surrounding text: alt="" was set');
+                } else {
+                    vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+                }
+            } else {
+                return {selection, altText: 'Image is already described by surrounding text. Empty alt will be inserted.', newText, actualSelection};
+            }
+
             return;
         }
 
@@ -1177,10 +1446,15 @@ async function processImgTag(
         // 挿入モードによって処理を分岐
         if (insertionMode === 'auto') {
             // 自動挿入モード
-            await editor.edit(editBuilder => {
-                editBuilder.replace(actualSelection, newText);
-            });
-            vscode.window.showInformationMessage(formatMessage('ALT attribute generated: {0}', altText));
+            // エディタが有効かチェック
+            if (editor && editor === vscode.window.activeTextEditor) {
+                await editor.edit(editBuilder => {
+                    editBuilder.replace(actualSelection, newText);
+                });
+                vscode.window.showInformationMessage(formatMessage('ALT attribute generated: {0}', altText));
+            } else {
+                vscode.window.showWarningMessage('Editor was switched during ALT generation. Please try again.');
+            }
         } else {
             // 確認後挿入モード
             return {selection, altText, newText, actualSelection};
@@ -1194,7 +1468,7 @@ async function processImgTag(
     }
 }
 
-async function generateAltText(apiKey: string, base64Image: string, mimeType: string, mode: string, model: string, token?: vscode.CancellationToken): Promise<string> {
+async function generateAltText(apiKey: string, base64Image: string, mimeType: string, mode: string, model: string, token?: vscode.CancellationToken, surroundingText?: string): Promise<string> {
     // キャンセルチェック
     if (token?.isCancellationRequested) {
         throw new Error('Cancelled');
@@ -1206,22 +1480,54 @@ async function generateAltText(apiKey: string, base64Image: string, mimeType: st
     const outputLang = getOutputLanguage();
 
     // 設定からプロンプトを取得
-    const config = vscode.workspace.getConfiguration('altGenerator');
     let prompt: string;
     const languageConstraint = outputLang === 'ja' ? '\n5. Respond only in Japanese.' : '';
 
     if (mode === 'A11Y') {
         // A11Yモード - 設定からプロンプトを取得
-        const customPrompt = config.get<string>('promptA11y');
+        const customPrompt = getConfig<string>('promptA11y', 'promptA11y', '');
         if (customPrompt && customPrompt.trim() !== '') {
             prompt = customPrompt + languageConstraint;
         } else {
             // デフォルトプロンプト
-            const charLengthConstraint = outputLang === 'ja'
-                ? '100 and 200 Japanese characters (full-width characters)'
-                : '100 and 200 characters';
+            // 文字数設定を取得
+            const descriptionLength = getConfig<string>('a11yDescriptionLength', 'a11yDescriptionLength', 'standard');
 
-            prompt = `You are a web accessibility expert. Analyze the provided image's content and the role it plays within the page's context in detail. Your task is to generate ALT text that is completely understandable for users with visual impairments.
+            let charLengthConstraint: string;
+            if (outputLang === 'ja') {
+                if (descriptionLength === 'detailed') {
+                    charLengthConstraint = '100 and 200 Japanese characters (full-width characters)';
+                } else {
+                    // standard
+                    charLengthConstraint = '50 and 120 Japanese characters (full-width characters)';
+                }
+            } else {
+                if (descriptionLength === 'detailed') {
+                    charLengthConstraint = '100 and 200 characters';
+                } else {
+                    // standard
+                    charLengthConstraint = '60 and 130 characters';
+                }
+            }
+
+            // 周辺テキストがある場合は、重複判定のための指示を追加
+            let contextInstruction = '';
+            if (surroundingText) {
+                contextInstruction = `
+
+[SURROUNDING TEXT CONTEXT]
+The following text appears near the image in the page:
+
+${surroundingText}
+
+[IMPORTANT - AVOID REDUNDANCY]
+- If the surrounding text already fully describes the image content, return "DECORATIVE" (without quotes) to indicate that alt="" should be used (avoiding double reading by screen readers).
+- If the surrounding text partially describes the image, provide only a brief supplementary description (maximum 50 characters) that adds essential information not mentioned in the text.
+- If the surrounding text does not describe the image at all, provide a complete description following the standard constraints below.
+`;
+            }
+
+            prompt = `You are a web accessibility expert. Analyze the provided image's content and the role it plays within the page's context in detail. Your task is to generate ALT text that is completely understandable for users with visual impairments.${contextInstruction}
 
 [CONSTRAINTS]
 1. Completely describe the image content and do not omit any details.
@@ -1233,7 +1539,7 @@ Return only the generated ALT text. No other conversation or explanation is requ
         }
     } else {
         // SEOモード - 設定からプロンプトを取得
-        const customPrompt = config.get<string>('promptSeo');
+        const customPrompt = getConfig<string>('promptSeo', 'promptSeo', '');
         if (customPrompt && customPrompt.trim() !== '') {
             prompt = customPrompt + languageConstraint;
         } else {
@@ -1265,6 +1571,14 @@ Return only the generated ALT text, without any further conversation or explanat
             ]
         }]
     };
+
+    console.log('[ALT Generator] ========== Gemini API Request (Image ALT) ==========');
+    console.log('[ALT Generator] Mode:', mode);
+    console.log('[ALT Generator] Model:', model);
+    console.log('[ALT Generator] MIME Type:', mimeType);
+    console.log('[ALT Generator] Prompt:');
+    console.log(prompt);
+    console.log('[ALT Generator] =====================================================');
 
     // キャンセルチェック
     if (token?.isCancellationRequested) {
@@ -1335,6 +1649,10 @@ Return only the generated ALT text, without any further conversation or explanat
 
     const altText = data.candidates[0].content.parts[0].text.trim();
 
+    console.log('[ALT Generator] ========== Gemini API Response (Image ALT) ==========');
+    console.log('[ALT Generator] Generated ALT:', altText);
+    console.log('[ALT Generator] =====================================================');
+
     return altText;
 }
 
@@ -1364,8 +1682,7 @@ async function generateVideoAriaLabel(apiKey: string, base64Video: string, mimeT
     const languageConstraint = outputLang === 'ja' ? '\n5. Respond only in Japanese.' : '';
 
     // 設定からプロンプトを取得
-    const config = vscode.workspace.getConfiguration('altGenerator');
-    const customPrompt = config.get<string>('promptVideo');
+    const customPrompt = getConfig<string>('promptVideo', 'promptVideo', '');
 
     let prompt: string;
     if (customPrompt && customPrompt.trim() !== '') {
@@ -1399,6 +1716,13 @@ Return only the generated ARIA-LABEL text. No other conversation or explanation 
             ]
         }]
     };
+
+    console.log('[ALT Generator] ========== Gemini API Request (Video aria-label) ==========');
+    console.log('[ALT Generator] Model:', model);
+    console.log('[ALT Generator] MIME Type:', mimeType);
+    console.log('[ALT Generator] Prompt:');
+    console.log(prompt);
+    console.log('[ALT Generator] =====================================================');
 
     // キャンセルチェック
     if (token?.isCancellationRequested) {
@@ -1468,6 +1792,10 @@ Return only the generated ARIA-LABEL text. No other conversation or explanation 
     }
 
     const ariaLabel = data.candidates[0].content.parts[0].text.trim();
+
+    console.log('[ALT Generator] ========== Gemini API Response (Video aria-label) ==========');
+    console.log('[ALT Generator] Generated aria-label:', ariaLabel);
+    console.log('[ALT Generator] =====================================================');
 
     return ariaLabel;
 }

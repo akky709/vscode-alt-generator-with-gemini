@@ -106,7 +106,7 @@ Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
 - **Gemini API Key**: Paste your API key
 
 **Optional:**
-- **Gemini API Model**: Choose between Flash 2.5 (fast, recommended) or Pro 2.5 (high accuracy)
+- **Gemini API Model**: Choose from Pro 2.5 (most advanced), Flash 2.5 (fast & intelligent, recommended), or Flash-Lite 2.5 (ultra-fast)
 - **Generation Mode**: SEO or A11Y
 - **Insertion Mode**: Auto (insert immediately) or Manual (review before insertion)
 - **Output Language**: Auto, Japanese, or English

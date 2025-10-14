@@ -15,6 +15,9 @@
   "categories": [
     "Other"
   ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "files": [
     "out/**/*.js",
     "images/**",
@@ -35,18 +38,46 @@
       {
         "command": "alt-generator.generateVideoAriaLabel",
         "title": "Generate aria-label attribute for video tags"
+      },
+      {
+        "command": "alt-generator.clearApiKey",
+        "title": "Clear Gemini API Key (for debugging)"
       }
     ],
     "configuration": {
-      "title": "ALT Generator with Gemini",
       "properties": {
-        "altGenerator.geminiApiKey": {
+        "alt.geminiApiKey": {
+          "order": 0,
           "type": "string",
           "default": "",
-          "markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))",
+          "description": "Gemini API Key",
+          "markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))  \n\n**Note:** The API key is stored securely and displayed as dots for security.  \n[Clear API Key](command:alt-generator.clearApiKey)",
           "editPresentation": "singlelineText"
         },
-        "altGenerator.generationMode": {
+        "alt.geminiApiModel": {
+          "order": 1,
+          "type": "string",
+          "default": "gemini-2.5-flash",
+          "enum": [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-8b"
+          ],
+          "enumDescriptions": [
+            "Most advanced model for complex tasks",
+            "Fast and intelligent (recommended)",
+            "Ultra-fast processing"
+          ],
+          "enumItemLabels": [
+            "Gemini 2.5 Pro",
+            "Gemini 2.5 Flash (Recommended)",
+            "Gemini 2.5 Flash-Lite"
+          ],
+          "description": "Gemini API Model",
+          "markdownDescription": "Gemini API model to use"
+        },
+        "alt.generationMode": {
+          "order": 2,
           "type": "string",
           "default": "SEO",
           "enum": [
@@ -61,41 +92,29 @@
             "SEO",
             "A11Y"
           ],
-          "description": "ALT generation mode"
+          "description": "Generation Mode"
         },
-        "altGenerator.geminiApiModel": {
+        "alt.a11yDescriptionLength": {
+          "order": 3,
           "type": "string",
-          "default": "gemini-2.5-flash",
+          "default": "standard",
           "enum": [
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash-exp"
+            "standard",
+            "detailed"
           ],
           "enumDescriptions": [
-            "Fast, generous free tier (recommended)",
-            "High accuracy, limited free tier",
-            "Provided for compatibility. Support may end in the future (not recommended)"
+            "Standard: Balanced descriptions that provide essential information (50-120 chars for Japanese, 60-130 chars for English)",
+            "Detailed: Comprehensive descriptions for complex images (100-200 chars for Japanese, 100-200 chars for English)"
           ],
           "enumItemLabels": [
-            "Gemini Flash 2.5 (Recommended)",
-            "Gemini Pro 2.5",
-            "Gemini 2.0 Flash (Experimental)"
+            "Standard",
+            "Detailed"
           ],
-          "markdownDescription": "Gemini API model to use"
+          "description": "A11Y Description Length",
+          "markdownDescription": "**A11Y mode only:** Control the level of detail in generated ALT text descriptions.  \n\n**Standard** (Recommended): Provides clear, essential information without being verbose. Suitable for most images.  \n**Detailed**: Includes comprehensive details about colors, layout, emotions, and context. Best for complex images or when detailed description is critical for understanding.  \n\n**Note:** The surrounding text analysis feature already helps avoid redundancy, so both options maintain good accessibility."
         },
-        "altGenerator.decorativeKeywords": {
-          "type": "array",
-          "default": [
-            "icon-",
-            "bg-",
-            "deco-"
-          ],
-          "items": {
-            "type": "string"
-          },
-          "description": "Keywords to identify decorative images (sets alt=\"\" if filename contains these)"
-        },
-        "altGenerator.insertionMode": {
+        "alt.insertionMode": {
+          "order": 4,
           "type": "string",
           "default": "auto",
           "enum": [
@@ -110,9 +129,10 @@
             "Auto",
             "Manual"
           ],
-          "description": "ALT and aria-label insertion mode"
+          "description": "Insertion Mode"
         },
-        "altGenerator.outputLanguage": {
+        "alt.outputLanguage": {
+          "order": 5,
           "type": "string",
           "default": "auto",
           "enum": [
@@ -125,25 +145,60 @@
             "日本語",
             "English"
           ],
-          "description": "Output language for generated ALT and aria-label"
+          "description": "Output Language"
         },
-        "altGenerator.promptSeo": {
+        "alt.decorativeKeywords": {
+          "order": 6,
+          "type": "array",
+          "default": [
+            "icon-",
+            "bg-",
+            "deco-"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Decorative Image Keywords"
+        },
+        "alt.promptSeo": {
+          "order": 7,
           "type": "string",
           "default": "",
           "editPresentation": "multilineText",
+          "description": "Custom Prompt for SEO Mode",
           "markdownDescription": "Custom prompt for SEO mode. Leave empty to use built-in defaults. See README for details."
         },
-        "altGenerator.promptA11y": {
+        "alt.promptA11y": {
+          "order": 8,
           "type": "string",
           "default": "",
           "editPresentation": "multilineText",
+          "description": "Custom Prompt for A11Y Mode",
           "markdownDescription": "Custom prompt for A11Y mode. Leave empty to use built-in defaults. See README for details."
         },
-        "altGenerator.promptVideo": {
+        "alt.promptVideo": {
+          "order": 9,
           "type": "string",
           "default": "",
           "editPresentation": "multilineText",
+          "description": "Custom Prompt for Video Mode",
           "markdownDescription": "Custom prompt for video aria-label. Leave empty to use built-in defaults. See README for details."
+        },
+        "alt.a11yContextEnabled": {
+          "order": 10,
+          "type": "boolean",
+          "default": true,
+          "description": "A11Y: Analyze Surrounding Text",
+          "markdownDescription": "**A11Y mode only:** Analyze surrounding text to avoid redundant ALT descriptions.  \n\n**How it works:**  \n- Finds parent elements (like `<section>`, `<div>`) containing the image  \n- Sends the text within those elements to Gemini AI along with the image  \n- If the text already describes the image, sets `alt=\"\"` to prevent double reading by screen readers  \n\n**Note:** This increases token usage (~100-400 tokens per image) but significantly improves accessibility."
+        },
+        "alt.a11yContextRange": {
+          "order": 11,
+          "type": "number",
+          "default": 1500,
+          "minimum": 200,
+          "maximum": 5000,
+          "description": "A11Y: Context Search Range",
+          "markdownDescription": "**A11Y mode only:** How far to search for parent elements containing relevant text (in characters).  \n\n**Examples:**  \n- `500`: Finds nearby parent elements (simple layouts)  \n- `1500`: Finds distant parent elements (nested layouts) ← Recommended  \n- `3000+`: For very complex page structures  \n\n**Note:** Larger values improve accuracy without increasing token usage."
         }
       }
     },

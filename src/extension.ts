@@ -4,7 +4,7 @@ import * as path from 'path';
 import fetch from 'node-fetch';
 
 // Core modules
-import { generateAltText, generateVideoAriaLabel } from './core/gemini';
+import { generateAltTextWithRetry, generateVideoAriaLabelWithRetry } from './core/gemini';
 
 // Utils
 import { safeEditDocument, escapeHtml, sanitizeFilePath, validateImageSrc } from './utils/security';
@@ -12,7 +12,6 @@ import { getMimeType, getVideoMimeType } from './utils/fileUtils';
 import { formatMessage, extractSurroundingText } from './utils/textUtils';
 import { detectTagType, detectAllTags, extractImageFileName, extractVideoFileName } from './utils/tagUtils';
 import { getContextRangeValue } from './utils/config';
-import { waitForRateLimit } from './utils/rateLimit';
 import { getUserFriendlyErrorMessage } from './utils/errorHandler';
 import { CancellationError } from './utils/errors';
 
@@ -35,7 +34,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let disposable = vscode.commands.registerCommand('alt-generator.generateAlt', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
-            vscode.window.showErrorMessage('No active editor');
+            vscode.window.showErrorMessage('❌ No active editor');
             return;
         }
 
@@ -56,7 +55,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 await generateAltForImages(context, editor, selections);
                 return;
             } else {
-                vscode.window.showErrorMessage('No img or video tag found at cursor position');
+                vscode.window.showErrorMessage('❌ No img or video tag found');
                 return;
             }
         } else {
@@ -64,7 +63,7 @@ export async function activate(context: vscode.ExtensionContext) {
             const allTags = detectAllTags(editor, firstSelection);
 
             if (allTags.length === 0) {
-                vscode.window.showErrorMessage('No img or video tag found at cursor position');
+                vscode.window.showErrorMessage('❌ No img or video tag found');
                 return;
             }
 
@@ -83,7 +82,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let videoDisposable = vscode.commands.registerCommand('alt-generator.generateVideoAriaLabel', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
-            vscode.window.showErrorMessage('No active editor');
+            vscode.window.showErrorMessage('❌ No active editor');
             return;
         }
 
@@ -204,50 +203,48 @@ async function processMultipleTags(
     const insertionMode = config.get<string>('insertionMode', 'auto');
     const totalCount = imgTags.length + videoTags.length;
 
-    // 初期タイトルを決定
-    let progressTitle: string;
-    const isMixed = imgTags.length > 0 && videoTags.length > 0;
-
-    if (imgTags.length > 0 && videoTags.length === 0) {
-        progressTitle = 'Generating ALT attributes...';
-    } else if (imgTags.length === 0 && videoTags.length > 0) {
-        progressTitle = 'Generating aria-labels...';
-    } else {
-        // 混在の場合は固定タイトル（詳細はメッセージに表示）
-        progressTitle = 'Processing...';
-    }
-
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: progressTitle,
+        title: formatMessage('Processing {0} items...', totalCount),
         cancellable: true
     }, async (progress, token) => {
         let processedCount = 0;
+        let successCount = 0;
+        let failureCount = 0;
 
         // imgタグを処理
         for (const tag of imgTags) {
             if (token.isCancellationRequested) {
-                vscode.window.showWarningMessage(formatMessage('ALT attribute generation cancelled ({0}/{1} items processed)', processedCount, totalCount));
+                vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount, totalCount));
                 return;
             }
 
             const fileName = extractImageFileName(tag.text);
 
             // imgタグ処理中のメッセージ
-            const prefix = isMixed ? 'Generating ALT attributes...: ' : '';
             progress.report({
-                message: prefix + formatMessage('All {0} items - {1}/{2} - {3}', totalCount, processedCount + 1, totalCount, fileName),
+                message: formatMessage('[IMG] {0}/{1} - {2}', processedCount + 1, totalCount, fileName),
                 increment: (100 / totalCount)
             });
 
             const selection = new vscode.Selection(tag.range.start, tag.range.end);
-            const result = await processImgTag(context, editor, selection, token, undefined, processedCount, totalCount, insertionMode);
 
-            if (result) {
-                if (insertionMode === 'confirm') {
+            try {
+                const result = await processImgTag(context, editor, selection, token, undefined, processedCount, totalCount, insertionMode);
+
+                // 成功/失敗をカウント
+                if (result && result.success !== false) {
+                    successCount++;
+                } else if (!result) {
+                    // void が返された場合（エラーまたはキャンセル）
+                    failureCount++;
+                }
+
+                if (result) {
+                    if (insertionMode === 'confirm') {
                     // 個別確認ダイアログを表示
                     const choice = await vscode.window.showInformationMessage(
-                        `Generated ALT attribute:\n${result.altText}\n\nInsert this ALT attribute?`,
+                        `✅ ALT: ${result.altText}\n\nInsert this ALT?`,
                         'Insert',
                         'Skip',
                         'Cancel'
@@ -259,11 +256,16 @@ async function processMultipleTags(
                             return;
                         }
                     } else if (choice === 'Cancel') {
-                        vscode.window.showWarningMessage(formatMessage('ALT attribute generation cancelled ({0}/{1} items processed)', processedCount + 1, totalCount));
+                        vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
                         return;
                     }
                     // 'Skip'の場合は何もせず次へ
                 }
+                }
+            } catch (error) {
+                // エラーが発生した場合はfailureCountをインクリメント
+                failureCount++;
+                // エラーは既にprocessImgTag内で表示されているのでここでは無視
             }
 
             processedCount++;
@@ -272,51 +274,80 @@ async function processMultipleTags(
         // videoタグを処理
         for (const tag of videoTags) {
             if (token.isCancellationRequested) {
-                vscode.window.showWarningMessage(formatMessage('ALT attribute generation cancelled ({0}/{1} items processed)', processedCount, totalCount));
+                vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount, totalCount));
                 return;
             }
 
             const fileName = extractVideoFileName(tag.text);
 
             // videoタグ処理中のメッセージ
-            const prefix = isMixed ? 'Generating aria-labels...: ' : '';
             progress.report({
-                message: prefix + formatMessage('All {0} items - {1}/{2} - {3}', totalCount, processedCount + 1, totalCount, fileName),
+                message: formatMessage('[VIDEO] {0}/{1} - {2}', processedCount + 1, totalCount, fileName),
                 increment: (100 / totalCount)
             });
 
             const selection = new vscode.Selection(tag.range.start, tag.range.end);
-            const result = await processVideoTag(context, editor, selection, token);
 
-            if (result && insertionMode === 'confirm') {
-                // 個別確認ダイアログを表示
-                const choice = await vscode.window.showInformationMessage(
-                    `aria-label generated: ${result.ariaLabel}\n\nInsert this ALT attribute?`,
-                    'Insert',
-                    'Skip',
-                    'Cancel'
-                );
+            try {
+                const result = await processVideoTag(context, editor, selection, token);
 
-                if (choice === 'Insert') {
-                    const success = await safeEditDocument(editor, selection, result.newText);
-                    if (!success) {
-                        return;
-                    }
-                } else if (choice === 'Cancel') {
-                    vscode.window.showWarningMessage(formatMessage('ALT attribute generation cancelled ({0}/{1} items processed)', processedCount + 1, totalCount));
-                    return;
+                // 成功/失敗をカウント
+                if (result && result.success !== false) {
+                    successCount++;
+                } else if (!result) {
+                    // void が返された場合（エラーまたはキャンセル）
+                    failureCount++;
                 }
-                // 'Skip'の場合は何もせず次へ
+
+                if (result && insertionMode === 'confirm') {
+                    // DECORATIVEの場合（aria-labelを追加しない）は確認ダイアログを表示せず、次へ進む
+                    if (result.ariaLabel.includes('not added')) {
+                        // 何もせず次へ
+                    } else {
+                        // 個別確認ダイアログを表示
+                        const choice = await vscode.window.showInformationMessage(
+                            `✅ aria-label: ${result.ariaLabel}\n\nInsert this aria-label?`,
+                            'Insert',
+                            'Skip',
+                            'Cancel'
+                        );
+
+                        if (choice === 'Insert') {
+                            const success = await safeEditDocument(editor, selection, result.newText);
+                            if (!success) {
+                                return;
+                            }
+                        } else if (choice === 'Cancel') {
+                            vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
+                            return;
+                        }
+                        // 'Skip'の場合は何もせず次へ
+                    }
+                }
+            } catch (error) {
+                // エラーが発生した場合はfailureCountをインクリメント
+                failureCount++;
+                // エラーは既にprocessVideoTag内で表示されているのでここでは無視
             }
 
             processedCount++;
         }
 
-        // autoモードの場合のみ完了メッセージを表示
-        if (insertionMode === 'auto' && totalCount > 1) {
-            vscode.window.showInformationMessage(formatMessage('{0} ALT attributes generated successfully', totalCount));
-        } else if (insertionMode === 'confirm' && totalCount > 1) {
-            vscode.window.showInformationMessage(formatMessage('Processed {0} images', totalCount));
+        // 完了メッセージを表示
+        const imgCount = imgTags.length;
+        const videoCount = videoTags.length;
+
+        if (failureCount === 0) {
+            // 全て成功
+            const itemsText = imgCount > 0 && videoCount > 0
+                ? formatMessage('{0} images, {1} video', imgCount, videoCount)
+                : imgCount > 0
+                    ? formatMessage('{0} image' + (imgCount > 1 ? 's' : ''), imgCount)
+                    : formatMessage('{0} video' + (videoCount > 1 ? 's' : ''), videoCount);
+            vscode.window.showInformationMessage(formatMessage('✅ {0} items processed ({1})', totalCount, itemsText));
+        } else {
+            // エラーがあった
+            vscode.window.showWarningMessage(formatMessage('⚠️ Completed with errors: {0} succeeded, {1} failed', successCount, failureCount));
         }
     });
 }
@@ -331,7 +362,7 @@ async function generateAltForImages(context: vscode.ExtensionContext, editor: vs
         // 常に進捗ダイアログを表示
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: 'Generating ALT tags...',
+            title: 'Generating...',
             cancellable: true
         }, async (progress, token) => {
             let processedCount = 0;
@@ -340,7 +371,7 @@ async function generateAltForImages(context: vscode.ExtensionContext, editor: vs
             for (const selection of selections) {
                 // キャンセルチェック
                 if (token?.isCancellationRequested) {
-                    vscode.window.showWarningMessage(formatMessage('ALT tag generation cancelled ({0}/{1} items processed)', processedCount, totalCount));
+                    vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount, totalCount));
                     return;
                 }
 
@@ -350,7 +381,7 @@ async function generateAltForImages(context: vscode.ExtensionContext, editor: vs
                     if (insertionMode === 'confirm') {
                         // 各画像について即座に確認ダイアログを表示
                         const choice = await vscode.window.showInformationMessage(
-                            `Generated ALT tag:\n${result.altText}\n\nInsert this ALT tag?`,
+                            `✅ ALT: ${result.altText}\n\nInsert this ALT?`,
                             'Insert',
                             'Skip',
                             'Cancel'
@@ -362,7 +393,7 @@ async function generateAltForImages(context: vscode.ExtensionContext, editor: vs
                                 return;
                             }
                         } else if (choice === 'Cancel') {
-                            vscode.window.showWarningMessage(formatMessage('ALT tag generation cancelled ({0}/{1} items processed)', processedCount + 1, totalCount));
+                            vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
                             return;
                         }
                         // 'Skip'の場合は次の画像へ続行
@@ -372,10 +403,12 @@ async function generateAltForImages(context: vscode.ExtensionContext, editor: vs
                 processedCount++;
             }
 
-            if (insertionMode === 'auto' && totalCount > 1) {
-                vscode.window.showInformationMessage(formatMessage('{0} ALT tags generated successfully', totalCount));
-            } else if (insertionMode === 'confirm' && totalCount > 1) {
-                vscode.window.showInformationMessage(formatMessage('Processed {0} images', totalCount));
+            if (totalCount > 1) {
+                if (insertionMode === 'auto') {
+                    vscode.window.showInformationMessage(formatMessage('✅ {0} images processed', totalCount));
+                } else if (insertionMode === 'confirm') {
+                    vscode.window.showInformationMessage(formatMessage('✅ {0} images processed', totalCount));
+                }
             }
         });
 }
@@ -386,7 +419,7 @@ async function processVideoTag(
     editor: vscode.TextEditor,
     selection: vscode.Selection,
     token?: vscode.CancellationToken
-): Promise<{newText: string, ariaLabel: string} | void> {
+): Promise<{newText: string, ariaLabel: string, success: boolean} | void> {
     const document = editor.document;
     const selectedText = document.getText(selection);
 
@@ -399,14 +432,14 @@ async function processVideoTag(
     }
 
     if (!videoSrc) {
-        vscode.window.showErrorMessage('video/source tag src attribute not found');
+        vscode.window.showErrorMessage('❌ video src not found');
         return;
     }
 
     // 現在のドキュメントが属するワークスペースフォルダを取得（マルチルートワークスペース対応）
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
     if (!workspaceFolder) {
-        vscode.window.showErrorMessage('Workspace not opened');
+        vscode.window.showErrorMessage('❌ Workspace not opened');
         return;
     }
 
@@ -426,20 +459,20 @@ async function processVideoTag(
     }
 
     if (!videoPath) {
-        vscode.window.showErrorMessage('Invalid file path: Path traversal attempt detected');
+        vscode.window.showErrorMessage('🚫 Invalid file path');
         return;
     }
 
     if (!fs.existsSync(videoPath)) {
         const displayPath = path.basename(videoPath);
-        vscode.window.showErrorMessage(formatMessage('Video not found: {0}', displayPath));
+        vscode.window.showErrorMessage(formatMessage('❌ Video not found: {0}', displayPath));
         return;
     }
 
     const stats = fs.statSync(videoPath);
     const fileSizeMB = stats.size / (1024 * 1024);
     if (fileSizeMB > 20) {
-        vscode.window.showErrorMessage(formatMessage('Video file is too large ({0}MB). Please use a video under 20MB.', fileSizeMB.toFixed(2)));
+        vscode.window.showErrorMessage(formatMessage('❌ Video too large ({0}MB). Max 20MB.', fileSizeMB.toFixed(2)));
         return;
     }
 
@@ -450,9 +483,10 @@ async function processVideoTag(
     const apiKey = await getApiKey(context);
     const config = vscode.workspace.getConfiguration('altGenGemini');
     const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
+    const insertionMode = config.get<string>('insertionMode', 'auto');
 
     if (!apiKey) {
-        vscode.window.showErrorMessage('Gemini API key is not configured. Please set your API key in VSCode settings.');
+        vscode.window.showErrorMessage('🔑 API key not configured');
         return;
     }
 
@@ -460,16 +494,27 @@ async function processVideoTag(
         return;
     }
 
-    await waitForRateLimit();
+    // 周辺テキストを取得（設定が有効な場合）
+    let surroundingText: string | undefined;
+    const contextEnabled = config.get<boolean>('contextEnabled', true);
+    const contextRange = getContextRangeValue();
+
+    if (contextEnabled) {
+        surroundingText = extractSurroundingText(editor.document, selection, contextRange);
+    }
+
+    const ariaLabel = await generateVideoAriaLabelWithRetry(apiKey, base64Video, mimeType, geminiModel, token, surroundingText, 2);
 
     if (token?.isCancellationRequested) {
         return;
     }
 
-    const ariaLabel = await generateVideoAriaLabel(apiKey, base64Video, mimeType, geminiModel, token);
-
-    if (token?.isCancellationRequested) {
-        return;
+    // "DECORATIVE"判定の場合はaria-labelを追加しない
+    if (ariaLabel.trim() === 'DECORATIVE') {
+        if (insertionMode === 'auto') {
+            vscode.window.showInformationMessage('📝 aria-label: Already described by surrounding text (not added)');
+        }
+        return { newText: selectedText, ariaLabel: 'Already described by surrounding text (not added)', success: true };
     }
 
     // XSS対策: APIレスポンスをエスケープ
@@ -484,15 +529,15 @@ async function processVideoTag(
     }
 
     // autoモードの場合は自動挿入
-    const insertionMode = config.get<string>('insertionMode', 'auto');
     if (insertionMode === 'auto') {
         const success = await safeEditDocument(editor, selection, newText);
         if (success) {
-            vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
+            vscode.window.showInformationMessage(formatMessage('✅ aria-label: {0}', ariaLabel));
         }
+        return { newText, ariaLabel, success: true };
     } else {
         // confirmモード用に結果を返す
-        return { newText, ariaLabel };
+        return { newText, ariaLabel, success: true };
     }
 }
 
@@ -513,7 +558,7 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
             const videoStartIndex = fullText.lastIndexOf('<video', offset);
 
             if (videoStartIndex === -1) {
-                vscode.window.showErrorMessage('video/source tag src attribute not found');
+                vscode.window.showErrorMessage('❌ video src not found');
                 return;
             }
 
@@ -527,7 +572,7 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
                 if (endIndex !== -1) {
                     endIndex += 2;
                 } else {
-                    vscode.window.showErrorMessage(formatMessage('{0} tag end not found', 'video'));
+                    vscode.window.showErrorMessage('❌ video tag end not found');
                     return;
                 }
             }
@@ -548,14 +593,14 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
         }
 
         if (!videoSrc) {
-            vscode.window.showErrorMessage('video/source tag src attribute not found');
+            vscode.window.showErrorMessage('❌ video src not found');
             return;
         }
 
         // 現在のドキュメントが属するワークスペースフォルダを取得（マルチルートワークスペース対応）
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
         if (!workspaceFolder) {
-            vscode.window.showErrorMessage('Workspace not opened');
+            vscode.window.showErrorMessage('❌ Workspace not opened');
             return;
         }
 
@@ -575,13 +620,13 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
         }
 
         if (!videoPath) {
-            vscode.window.showErrorMessage('Invalid file path: Path traversal attempt detected');
+            vscode.window.showErrorMessage('🚫 Invalid file path');
             return;
         }
 
         if (!fs.existsSync(videoPath)) {
             const displayPath = path.basename(videoPath);
-            vscode.window.showErrorMessage(formatMessage('Video not found: {0}', displayPath));
+            vscode.window.showErrorMessage(formatMessage('❌ Video not found: {0}', displayPath));
             return;
         }
 
@@ -589,7 +634,7 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
         const stats = fs.statSync(videoPath);
         const fileSizeMB = stats.size / (1024 * 1024);
         if (fileSizeMB > 20) {
-            vscode.window.showErrorMessage(formatMessage('Video file is too large ({0}MB). Please use a video under 20MB.', fileSizeMB.toFixed(2)));
+            vscode.window.showErrorMessage(formatMessage('❌ Video too large ({0}MB). Max 20MB.', fileSizeMB.toFixed(2)));
             return;
         }
 
@@ -604,37 +649,43 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
         const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
 
         if (!apiKey) {
-            vscode.window.showErrorMessage('Gemini API key is not configured. Please run "Set Gemini API Key" command.');
+            vscode.window.showErrorMessage('🔑 API key not configured');
             return;
         }
 
         // Gemini APIを呼び出してaria-labelテキストを生成
         vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: 'Analyzing video and generating aria-label...',
+            title: 'Generating...',
             cancellable: true
         }, async (_progress, token) => {
             try {
                 // キャンセルチェック
                 if (token.isCancellationRequested) {
-                    vscode.window.showWarningMessage('aria-label generation cancelled');
+                    vscode.window.showWarningMessage('⏸️ Cancelled');
                     return;
                 }
 
-                // レートリミット
-                await waitForRateLimit();
+                // 周辺テキストを取得（設定が有効な場合）
+                let surroundingText: string | undefined;
+                const contextEnabled = config.get<boolean>('contextEnabled', true);
+                const contextRange = getContextRangeValue();
+
+                if (contextEnabled) {
+                    surroundingText = extractSurroundingText(document, actualSelection, contextRange);
+                }
+
+                const ariaLabel = await generateVideoAriaLabelWithRetry(apiKey, base64Video, mimeType, geminiModel, token, surroundingText, 2);
 
                 // キャンセルチェック
                 if (token.isCancellationRequested) {
-                    vscode.window.showWarningMessage('aria-label generation cancelled');
+                    vscode.window.showWarningMessage('⏸️ Cancelled');
                     return;
                 }
 
-                const ariaLabel = await generateVideoAriaLabel(apiKey, base64Video, mimeType, geminiModel, token);
-
-                // キャンセルチェック
-                if (token.isCancellationRequested) {
-                    vscode.window.showWarningMessage('aria-label generation cancelled');
+                // "DECORATIVE"判定の場合はaria-labelを追加しない
+                if (ariaLabel.trim() === 'DECORATIVE') {
+                    vscode.window.showInformationMessage('📝 aria-label: Already described by surrounding text (not added)');
                     return;
                 }
 
@@ -656,7 +707,7 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
                 // テキストを置換
                 const success = await safeEditDocument(editor, actualSelection, newText);
                 if (success) {
-                    vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
+                    vscode.window.showInformationMessage(formatMessage('✅ aria-label: {0}', ariaLabel));
                 }
             } catch (error) {
                 // キャンセルエラーは無視
@@ -679,7 +730,7 @@ async function processImgTag(
     processedCount?: number,
     totalCount?: number,
     insertionMode?: string
-): Promise<{selection: vscode.Selection, altText: string, newText: string, actualSelection: vscode.Selection} | void> {
+): Promise<{selection: vscode.Selection, altText: string, newText: string, actualSelection: vscode.Selection, success: boolean} | void> {
     const document = editor.document;
     let selectedText = document.getText(selection);
     let actualSelection = selection;
@@ -701,7 +752,7 @@ async function processImgTag(
 
         // より近いタグを選択
         if (imgIndex === -1 && ImageIndex === -1) {
-            vscode.window.showErrorMessage('img tag not found');
+            vscode.window.showErrorMessage('❌ img tag not found');
             return;
         } else if (imgIndex > ImageIndex) {
             startIndex = imgIndex;
@@ -714,7 +765,7 @@ async function processImgTag(
         // >または/>を前方検索（自己閉じまたは通常閉じ）
         let endIndex = fullText.indexOf('>', startIndex);
         if (endIndex === -1) {
-            vscode.window.showErrorMessage(formatMessage('{0} tag end not found', tagType));
+            vscode.window.showErrorMessage(formatMessage('❌ {0} tag end not found', tagType));
             return;
         }
         endIndex++; // '>'を含める
@@ -739,7 +790,7 @@ async function processImgTag(
         if (jsxMatch) {
             imageSrc = jsxMatch[1];
         } else {
-            vscode.window.showErrorMessage('img tag src attribute not found');
+            vscode.window.showErrorMessage('❌ img src not found');
             return;
         }
     }
@@ -747,7 +798,7 @@ async function processImgTag(
     // 入力検証：危険なプロトコルとパターンをチェック
     const validation = validateImageSrc(imageSrc);
     if (!validation.valid) {
-        vscode.window.showErrorMessage(formatMessage('Invalid image source: {0}', validation.reason || 'Unknown error'));
+        vscode.window.showErrorMessage(formatMessage('🚫 Invalid image source: {0}', validation.reason || 'Unknown error'));
         return;
     }
 
@@ -759,7 +810,7 @@ async function processImgTag(
         (imageSrc.match(/^[a-zA-Z_][a-zA-Z0-9_.]*$/) && !imageSrc.includes('/') && !imageSrc.includes('.')); // 変数名（パス区切りや拡張子のない単純な識別子）
 
     if (isDynamic) {
-        vscode.window.showErrorMessage(formatMessage('Dynamic src attributes are not supported. Only static paths (string literals) are supported. Detected: {0}', imageSrc));
+        vscode.window.showErrorMessage(formatMessage('🚫 Dynamic src not supported: {0}', imageSrc));
         return;
     }
 
@@ -767,8 +818,11 @@ async function processImgTag(
 
     // 進捗メッセージを更新
     if (progress && typeof processedCount === 'number' && typeof totalCount === 'number') {
+        const message = totalCount === 1
+            ? imageFileName
+            : formatMessage('[IMG] {0}/{1} - {2}', processedCount + 1, totalCount, imageFileName);
         progress.report({
-            message: formatMessage('All {0} items - {1}/{2} - {3}', totalCount, processedCount + 1, totalCount, imageFileName),
+            message,
             increment: (100 / totalCount)
         });
     }
@@ -799,13 +853,12 @@ async function processImgTag(
         if (insertionMode === 'auto') {
             const success = await safeEditDocument(editor, actualSelection, newText);
             if (success) {
-                vscode.window.showInformationMessage('Detected as decorative image: alt="" was set');
+                vscode.window.showInformationMessage('🎨 ALT: Decorative image (alt="")');
             }
+            return {selection, altText: 'Decorative image', newText, actualSelection, success: true};
         } else {
-            return {selection, altText: 'Detected as decorative image. Empty alt will be inserted.', newText, actualSelection};
+            return {selection, altText: 'Decorative image (alt="")', newText, actualSelection, success: true};
         }
-
-        return;
     }
 
     // 画像を読み込み、Base64エンコード
@@ -817,7 +870,7 @@ async function processImgTag(
         try {
             const response = await fetch(imageSrc);
             if (!response.ok) {
-                vscode.window.showErrorMessage(formatMessage('Failed to fetch image from URL: {0} ({1})', imageSrc, response.statusText));
+                vscode.window.showErrorMessage(formatMessage('❌ Failed to fetch image: {0}', response.statusText));
                 return;
             }
             const buffer = await response.buffer();
@@ -832,7 +885,7 @@ async function processImgTag(
                 mimeType = getMimeType(imageSrc);
             }
         } catch (error) {
-            vscode.window.showErrorMessage(formatMessage('Error fetching image from URL: {0}', error instanceof Error ? error.message : String(error)));
+            vscode.window.showErrorMessage(formatMessage('❌ Error fetching image: {0}', error instanceof Error ? error.message : String(error)));
             return;
         }
     } else {
@@ -840,7 +893,7 @@ async function processImgTag(
         // 現在のドキュメントが属するワークスペースフォルダを取得（マルチルートワークスペース対応）
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
         if (!workspaceFolder) {
-            vscode.window.showErrorMessage('Workspace not opened');
+            vscode.window.showErrorMessage('❌ Workspace not opened');
             return;
         }
 
@@ -860,7 +913,7 @@ async function processImgTag(
         }
 
         if (!imagePath) {
-            vscode.window.showErrorMessage('Invalid file path: Path traversal attempt detected');
+            vscode.window.showErrorMessage('🚫 Invalid file path');
             return;
         }
 
@@ -872,13 +925,13 @@ async function processImgTag(
                 staticDir: detectStaticFileDirectory(workspaceFolder.uri.fsPath),
                 resolvedPath: imagePath
             });
-            vscode.window.showErrorMessage(formatMessage('Image not found: {0}\nPath: {1}', displayPath, imagePath));
+            vscode.window.showErrorMessage(formatMessage('❌ Image not found: {0}', displayPath));
             return;
         }
 
         // SVG画像を検出してエラーを表示
         if (path.extname(imagePath).toLowerCase() === '.svg') {
-            vscode.window.showErrorMessage('SVG images are not supported by Gemini API. Please convert to PNG/JPG manually or use raster images.');
+            vscode.window.showErrorMessage('🚫 SVG not supported. Convert to PNG/JPG first.');
             return;
         }
 
@@ -894,7 +947,7 @@ async function processImgTag(
     const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
 
     if (!apiKey) {
-        vscode.window.showErrorMessage('Gemini API key is not configured. Please set your API key in VSCode settings.');
+        vscode.window.showErrorMessage('🔑 API key not configured');
         return;
     }
 
@@ -914,15 +967,7 @@ async function processImgTag(
             return;
         }
 
-        // レートリミット
-        await waitForRateLimit();
-
-        // キャンセルチェック
-        if (token?.isCancellationRequested) {
-            return;
-        }
-
-        const altText = await generateAltText(apiKey, base64Image, mimeType, generationMode, geminiModel, token, surroundingText);
+        const altText = await generateAltTextWithRetry(apiKey, base64Image, mimeType, generationMode, geminiModel, token, surroundingText, 2);
 
         // キャンセルチェック
         if (token?.isCancellationRequested) {
@@ -947,13 +992,12 @@ async function processImgTag(
             if (insertionMode === 'auto') {
                 const success = await safeEditDocument(editor, actualSelection, newText);
                 if (success) {
-                    vscode.window.showInformationMessage('Image is already described by surrounding text: alt="" was set');
+                    vscode.window.showInformationMessage('📝 ALT: Already described by surrounding text (alt="")');
                 }
+                return {selection, altText: 'Already described by surrounding text', newText, actualSelection, success: true};
             } else {
-                return {selection, altText: 'Image is already described by surrounding text. Empty alt will be inserted.', newText, actualSelection};
+                return {selection, altText: 'Already described by surrounding text (alt="")', newText, actualSelection, success: true};
             }
-
-            return;
         }
 
         // XSS対策: APIレスポンスをエスケープ
@@ -980,11 +1024,12 @@ async function processImgTag(
             // 自動挿入モード
             const success = await safeEditDocument(editor, actualSelection, newText);
             if (success) {
-                vscode.window.showInformationMessage(formatMessage('ALT attribute generated: {0}', altText));
+                vscode.window.showInformationMessage(formatMessage('✅ ALT: {0}', altText));
             }
+            return {selection, altText, newText, actualSelection, success: true};
         } else {
             // 確認後挿入モード
-            return {selection, altText, newText, actualSelection};
+            return {selection, altText, newText, actualSelection, success: true};
         }
     } catch (error) {
         // キャンセルエラーは無視

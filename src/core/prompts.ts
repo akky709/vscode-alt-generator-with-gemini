@@ -151,7 +151,22 @@ Return only the generated ALT text. No other conversation or explanation is requ
     },
 
     video: {
-        en: () => `You are a Web Accessibility and UX expert. Analyze the provided video content in detail and identify the role it plays within the page's context. Your task is to generate the optimal ARIA-LABEL text that briefly explains the video's purpose or function.
+        en: (surroundingText?: string) => {
+            const contextInstruction = surroundingText ? `
+
+[SURROUNDING TEXT CONTEXT]
+The following text appears near the video in the page (including sibling elements at the same level and parent elements):
+
+${surroundingText}
+
+[IMPORTANT - AVOID REDUNDANCY]
+- Carefully read the text from both sibling elements (before/after the video) and parent elements.
+- If the surrounding text already fully describes the video's purpose or function, return "DECORATIVE" (without quotes) to indicate that aria-label should NOT be added (avoiding double reading by screen readers).
+- If the surrounding text partially describes the video, provide only a brief supplementary phrase (maximum 5 words) that adds information not mentioned in the text.
+- If the surrounding text does not describe the video at all, provide a complete description following the standard constraints below.
+` : '';
+
+            return `You are a Web Accessibility and UX expert. Analyze the provided video content in detail and identify the role it plays within the page's context. Your task is to generate the optimal ARIA-LABEL text that briefly explains the video's purpose or function.${contextInstruction}
 
 [CONSTRAINTS]
 1. The generated ARIA-LABEL text must be a very short phrase, **no more than 10 words**.
@@ -159,9 +174,25 @@ Return only the generated ALT text. No other conversation or explanation is requ
 3. Prioritize conciseness and use common language that will be easily understood by the user.
 4. Do not include the words "video," "movie," or "clip".
 
-Return only the generated ARIA-LABEL text. No other conversation or explanation is required.`,
+Return only the generated ARIA-LABEL text. No other conversation or explanation is required.`;
+        },
 
-        ja: () => `You are a Web Accessibility and UX expert. Analyze the provided video content in detail and identify the role it plays within the page's context. Your task is to generate the optimal ARIA-LABEL text that briefly explains the video's purpose or function.
+        ja: (surroundingText?: string) => {
+            const contextInstruction = surroundingText ? `
+
+[SURROUNDING TEXT CONTEXT]
+The following text appears near the video in the page (including sibling elements at the same level and parent elements):
+
+${surroundingText}
+
+[IMPORTANT - AVOID REDUNDANCY]
+- Carefully read the text from both sibling elements (before/after the video) and parent elements.
+- If the surrounding text already fully describes the video's purpose or function, return "DECORATIVE" (without quotes) to indicate that aria-label should NOT be added (avoiding double reading by screen readers).
+- If the surrounding text partially describes the video, provide only a brief supplementary phrase (maximum 5 words) that adds information not mentioned in the text.
+- If the surrounding text does not describe the video at all, provide a complete description following the standard constraints below.
+` : '';
+
+            return `You are a Web Accessibility and UX expert. Analyze the provided video content in detail and identify the role it plays within the page's context. Your task is to generate the optimal ARIA-LABEL text that briefly explains the video's purpose or function.${contextInstruction}
 
 [CONSTRAINTS]
 1. The generated ARIA-LABEL text must be a very short phrase, **no more than 10 words**.
@@ -170,7 +201,8 @@ Return only the generated ARIA-LABEL text. No other conversation or explanation 
 4. Do not include the words "video," "movie," or "clip".
 5. Respond only in Japanese.
 
-Return only the generated ARIA-LABEL text. No other conversation or explanation is required.`
+Return only the generated ARIA-LABEL text. No other conversation or explanation is required.`;
+        }
     }
 } as const;
 
@@ -214,9 +246,13 @@ export function getDefaultPrompt(
         // Check if custom prompt exists
         const customPrompt = customPrompts?.video?.[lang];
         if (customPrompt) {
-            return customPrompt;
+            // If custom prompt doesn't include context instruction, append it
+            const contextInstruction = options?.surroundingText
+                ? `\n\n[SURROUNDING TEXT CONTEXT]\nThe following text appears near the video:\n\n${options.surroundingText}\n\n[IMPORTANT - AVOID REDUNDANCY]\n- If the surrounding text already fully describes the video's purpose or function, return "DECORATIVE" (without quotes) to indicate that aria-label should NOT be added.\n- Otherwise, provide a brief description following the constraints.`
+                : '';
+            return customPrompt + contextInstruction;
         }
-        return DEFAULT_PROMPTS.video[lang]();
+        return DEFAULT_PROMPTS.video[lang](options?.surroundingText);
     }
 
     if (type === 'a11y') {

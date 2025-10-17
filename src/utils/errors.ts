@@ -21,11 +21,12 @@ export class GeminiError extends Error {
 }
 
 /**
- * Rate limit error (429) - Retryable
+ * Rate limit error (429) - NOT retryable
+ * User should wait before trying again
  */
 export class RateLimitError extends GeminiError {
     constructor(message: string = 'Rate limit exceeded. Please wait and try again.') {
-        super(message, 429, true, 'RATE_LIMIT');
+        super(message, 429, false, 'RATE_LIMIT');
         this.name = 'RateLimitError';
         Object.setPrototypeOf(this, RateLimitError.prototype);
     }

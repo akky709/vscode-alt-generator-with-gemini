@@ -6,9 +6,8 @@ import * as vscode from 'vscode';
 import fetch, { Response } from 'node-fetch';
 import { getDefaultPrompt, getCharConstraint } from './prompts';
 import { getOutputLanguage } from '../utils/config';
-import { waitForRateLimit } from '../utils/rateLimit';
 import { CancellationError, NetworkError } from '../utils/errors';
-import { handleHttpError, handleContentBlocked, validateResponseStructure } from '../utils/errorHandler';
+import { handleHttpError, handleContentBlocked, validateResponseStructure, isRetryableError } from '../utils/errorHandler';
 
 /**
  * Generate ALT text for an image using Gemini API
@@ -131,7 +130,8 @@ export async function generateVideoAriaLabel(
     base64Video: string,
     mimeType: string,
     model: string,
-    token?: vscode.CancellationToken
+    token?: vscode.CancellationToken,
+    surroundingText?: string
 ): Promise<string> {
     // キャンセルチェック
     if (token?.isCancellationRequested) {
@@ -144,7 +144,9 @@ export async function generateVideoAriaLabel(
     const outputLang = getOutputLanguage();
 
     // プロンプトを取得
-    const prompt = getDefaultPrompt('video', outputLang as 'en' | 'ja');
+    const prompt = getDefaultPrompt('video', outputLang as 'en' | 'ja', {
+        surroundingText
+    });
 
     const requestBody = {
         contents: [{
@@ -213,4 +215,124 @@ export async function generateVideoAriaLabel(
     const ariaLabel = data.candidates[0].content.parts[0].text.trim();
 
     return ariaLabel;
+}
+
+/**
+ * Generate ALT text with automatic retry for retryable errors
+ * Only retries network errors and server errors (5xx)
+ * Does NOT retry rate limit errors (429) - user must wait
+ */
+export async function generateAltTextWithRetry(
+    apiKey: string,
+    base64Image: string,
+    mimeType: string,
+    mode: string,
+    model: string,
+    token?: vscode.CancellationToken,
+    surroundingText?: string,
+    maxRetries: number = 2
+): Promise<string> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            // キャンセルチェック
+            if (token?.isCancellationRequested) {
+                throw new CancellationError();
+            }
+
+            return await generateAltText(
+                apiKey,
+                base64Image,
+                mimeType,
+                mode,
+                model,
+                token,
+                surroundingText
+            );
+        } catch (error) {
+            lastError = error as Error;
+
+            // キャンセルエラーは即座に投げる
+            if (error instanceof CancellationError || token?.isCancellationRequested) {
+                throw error;
+            }
+
+            // リトライ不可能なエラーは即座に投げる
+            if (!isRetryableError(error)) {
+                throw error;
+            }
+
+            // 最後の試行でエラーが出た場合は投げる
+            if (attempt === maxRetries - 1) {
+                throw error;
+            }
+
+            // Short wait for network/server errors: 1秒, 2秒
+            const waitTime = 1000 * (attempt + 1);
+            console.log(`[ALT Generator] Retrying after network/server error (attempt ${attempt + 1}/${maxRetries}, waiting ${waitTime}ms)`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+    }
+
+    throw lastError || new Error('Unknown error during retry');
+}
+
+/**
+ * Generate aria-label with automatic retry for retryable errors
+ * Only retries network errors and server errors (5xx)
+ * Does NOT retry rate limit errors (429) - user must wait
+ */
+export async function generateVideoAriaLabelWithRetry(
+    apiKey: string,
+    base64Video: string,
+    mimeType: string,
+    model: string,
+    token?: vscode.CancellationToken,
+    surroundingText?: string,
+    maxRetries: number = 2
+): Promise<string> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            // キャンセルチェック
+            if (token?.isCancellationRequested) {
+                throw new CancellationError();
+            }
+
+            return await generateVideoAriaLabel(
+                apiKey,
+                base64Video,
+                mimeType,
+                model,
+                token,
+                surroundingText
+            );
+        } catch (error) {
+            lastError = error as Error;
+
+            // キャンセルエラーは即座に投げる
+            if (error instanceof CancellationError || token?.isCancellationRequested) {
+                throw error;
+            }
+
+            // リトライ不可能なエラーは即座に投げる
+            if (!isRetryableError(error)) {
+                throw error;
+            }
+
+            // 最後の試行でエラーが出た場合は投げる
+            if (attempt === maxRetries - 1) {
+                throw error;
+            }
+
+            // Short wait for network/server errors: 1秒, 2秒
+            const waitTime = 1000 * (attempt + 1);
+            console.log(`[ALT Generator] Retrying after network/server error (attempt ${attempt + 1}/${maxRetries}, waiting ${waitTime}ms)`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+    }
+
+    throw lastError || new Error('Unknown error during retry');
 }

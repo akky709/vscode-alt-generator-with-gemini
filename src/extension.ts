@@ -3,349 +3,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import fetch from 'node-fetch';
 
-// レートリミット用の変数
-let lastRequestTime = 0;
+// Core modules
+import { generateAltText, generateVideoAriaLabel } from './core/gemini';
 
-// HTMLエスケープ関数（XSS対策）
-function escapeHtml(unsafe: string): string {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
+// Utils
+import { safeEditDocument, escapeHtml, sanitizeFilePath, validateImageSrc } from './utils/security';
+import { getMimeType, getVideoMimeType } from './utils/fileUtils';
+import { formatMessage, extractSurroundingText } from './utils/textUtils';
+import { detectTagType, detectAllTags, extractImageFileName, extractVideoFileName } from './utils/tagUtils';
+import { getContextRangeValue } from './utils/config';
+import { waitForRateLimit } from './utils/rateLimit';
 
-// パストラバーサル対策関数
-function sanitizeFilePath(filePath: string, basePath: string): string | null {
-    try {
-        // パストラバーサルシーケンスを明示的に拒否
-        if (filePath.includes('..') || filePath.includes('~')) {
-            return null;
-        }
-
-        // ルートパス（/で始まる）の場合は先頭の/を削除
-        let cleanPath = filePath;
-        if (cleanPath.startsWith('/')) {
-            cleanPath = cleanPath.substring(1);
-        }
-
-        // 絶対パスに解決
-        const resolved = path.resolve(basePath, cleanPath);
-        const normalized = path.normalize(resolved);
-        const normalizedBase = path.normalize(basePath);
-
-        // ワークスペース外へのアクセスを拒否
-        if (!normalized.startsWith(normalizedBase)) {
-            return null;
-        }
-
-        return normalized;
-    } catch {
-        return null;
-    }
-}
-
-// 入力検証：危険なプロトコルとパターンをチェック
-function validateImageSrc(src: string): { valid: boolean; reason?: string } {
-    // 危険なプロトコルを拒否
-    const dangerousProtocols = [
-        'javascript:', 'data:', 'vbscript:', 'file:',
-        'about:', 'chrome:', 'jar:', 'wyciwyg:'
-    ];
-
-    const lowerSrc = src.toLowerCase();
-    for (const protocol of dangerousProtocols) {
-        if (lowerSrc.startsWith(protocol)) {
-            return { valid: false, reason: `Dangerous protocol: ${protocol}` };
-        }
-    }
-
-    // UNCパス（Windows）を拒否（//で始まる場合でもhttp://やhttps://は除外）
-    if (src.startsWith('\\\\') || (src.startsWith('//') && !lowerSrc.startsWith('http://') && !lowerSrc.startsWith('https://'))) {
-        return { valid: false, reason: 'UNC paths not supported' };
-    }
-
-    // 動的表現を拒否
-    const dynamicPatterns = [
-        /\$\{/,           // テンプレートリテラル
-        /\$\(/,           // コマンド置換
-        /<\?php/i,        // PHPタグ
-        /<%/,             // ASP/JSPタグ
-        /@@/,             // Angular式
-        /\[\[/,           // Vue式
-    ];
-
-    for (const pattern of dynamicPatterns) {
-        if (pattern.test(src)) {
-            return { valid: false, reason: 'Dynamic expression detected' };
-        }
-    }
-
-    // http://またはhttps://で始まる場合は絶対URLとして許可
-    if (lowerSrc.startsWith('http://') || lowerSrc.startsWith('https://')) {
-        // URLとして妥当かチェック（基本的な検証）
-        try {
-            new URL(src);
-            return { valid: true };
-        } catch {
-            return { valid: false, reason: 'Invalid URL format' };
-        }
-    }
-
-    // ローカルパスの場合は許可された文字のみ
-    const allowedChars = /^[a-zA-Z0-9\/_.\-~]+$/;
-    if (!allowedChars.test(src)) {
-        return { valid: false, reason: 'Invalid characters in path' };
-    }
-
-    return { valid: true };
-}
-
-// プレースホルダーを置き換える関数
-function formatMessage(message: string, ...args: any[]): string {
-    args.forEach((arg, index) => {
-        message = message.replace(`{${index}}`, String(arg));
-    });
-    return message;
-}
-
-// ALT生成言語を取得する関数
-function getOutputLanguage(): string {
-    const config = vscode.workspace.getConfiguration('altGenGemini');
-    const langSetting = config.get<string>('outputLanguage', 'auto');
-
-    if (langSetting === 'auto') {
-        const vscodeLang = vscode.env.language;
-        return vscodeLang.startsWith('ja') ? 'ja' : 'en';
-    }
-
-    return langSetting;
-}
-
-// HTMLタグを除去してテキストコンテンツのみを取得
-function stripHtmlTags(text: string): string {
-    return text
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ') // scriptタグとその内容を削除
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ') // styleタグとその内容を削除
-        .replace(/<[^>]+>/g, ' ') // その他のHTMLタグを削除
-        .replace(/\s+/g, ' ') // 連続する空白を1つにまとめる
-        .trim();
-}
-
-// 親要素を検出して範囲を返す
-function findParentElement(fullText: string, imageStart: number, imageEnd: number, maxSearch: number = 5000): { start: number; end: number; tagName: string } | null {
-    // 画像位置から後方に検索（最大maxSearch文字まで）
-    const searchStart = Math.max(0, imageStart - maxSearch);
-    const searchText = fullText.substring(searchStart, imageEnd);
-    const relativeImageStart = imageStart - searchStart;
-
-    // 一般的なブロック要素のパターン
-    const blockTags = ['div', 'section', 'article', 'main', 'aside', 'header', 'footer', 'nav', 'figure', 'li', 'td', 'th', 'p', 'blockquote'];
-    const tagPattern = new RegExp(`<(${blockTags.join('|')})[\\s>]`, 'gi');
-
-    let closestParent: { start: number; end: number; tagName: string } | null = null;
-    let closestDistance = Infinity;
-
-    // 開始タグを探す
-    let match;
-    while ((match = tagPattern.exec(searchText)) !== null) {
-        const openTagStart = match.index;
-        const tagName = match[1].toLowerCase();
-
-        // 画像より後ろのタグは無視
-        if (openTagStart >= relativeImageStart) {
-            continue;
-        }
-
-        // 対応する終了タグを探す
-        const closeTagPattern = new RegExp(`</${tagName}>`, 'i');
-        const remainingText = fullText.substring(searchStart + openTagStart);
-        const closeMatch = closeTagPattern.exec(remainingText);
-
-        if (closeMatch) {
-            const closeTagEnd = openTagStart + closeMatch.index + closeMatch[0].length;
-            const absoluteCloseTagEnd = searchStart + closeTagEnd;
-
-            // 画像がこの要素内に含まれているか確認
-            if (absoluteCloseTagEnd > imageEnd) {
-                const distance = relativeImageStart - openTagStart;
-                if (distance < closestDistance) {
-                    closestDistance = distance;
-                    closestParent = {
-                        start: searchStart + openTagStart,
-                        end: absoluteCloseTagEnd,
-                        tagName: tagName
-                    };
-                }
-            }
-        }
-    }
-
-    return closestParent;
-}
-
-// 画像タグの周辺テキストを取得（構造的アプローチ）
-function extractSurroundingText(
-    document: vscode.TextDocument,
-    tagRange: vscode.Range,
-    contextRange: number
-): string {
-    const fullText = document.getText();
-    const imageStart = document.offsetAt(tagRange.start);
-    const imageEnd = document.offsetAt(tagRange.end);
-
-    const collectedTexts: string[] = [];
-    let currentImageStart = imageStart;
-    let currentImageEnd = imageEnd;
-    let level = 0;
-    const maxLevels = 3;
-
-    // 最大3階層まで親要素をさかのぼる
-    while (level < maxLevels) {
-        const parent = findParentElement(fullText, currentImageStart, currentImageEnd, contextRange);
-
-        if (!parent) {
-            break; // これ以上親要素が見つからない
-        }
-
-        // 親要素内のテキストを抽出（画像タグ自体は除外）
-        const beforeImage = fullText.substring(parent.start, imageStart);
-        const afterImage = fullText.substring(imageEnd, parent.end);
-
-        // HTMLタグを除去
-        const cleanedBefore = stripHtmlTags(beforeImage).trim();
-        const cleanedAfter = stripHtmlTags(afterImage).trim();
-
-        // テキストを収集
-        if (cleanedBefore.length > 0) {
-            collectedTexts.push(`[Text in <${parent.tagName}> before image]: ${cleanedBefore}`);
-        }
-        if (cleanedAfter.length > 0) {
-            collectedTexts.push(`[Text in <${parent.tagName}> after image]: ${cleanedAfter}`);
-        }
-
-        // 十分なテキストが集まったら終了（最低50文字）
-        const totalLength = cleanedBefore.length + cleanedAfter.length;
-        if (totalLength >= 50) {
-            break;
-        }
-
-        // 次の階層へ（親の親を探す）
-        currentImageStart = parent.start;
-        currentImageEnd = parent.end;
-        level++;
-    }
-
-    // テキストが見つからなかった場合
-    if (collectedTexts.length === 0) {
-        return '[No surrounding text found]';
-    }
-
-    return '[IMAGE LOCATION]\n' + collectedTexts.join('\n');
-}
-
-// カーソル位置のタグタイプを検出
-function detectTagType(editor: vscode.TextEditor, selection: vscode.Selection): 'img' | 'video' | null {
-    const document = editor.document;
-    const offset = document.offsetAt(selection.active);
-    const text = document.getText();
-
-    // カーソル位置から後方検索してタグの開始を見つける
-    let startIndex = offset;
-    while (startIndex > 0 && text[startIndex] !== '<') {
-        startIndex--;
-    }
-
-    // 前方検索してタグの終了を見つける
-    let endIndex = offset;
-    while (endIndex < text.length && text[endIndex] !== '>') {
-        endIndex++;
-    }
-
-    // タグテキストを取得
-    const tagText = text.substring(startIndex, endIndex + 1);
-
-    // タグタイプを判定
-    if (/<img\s/i.test(tagText) || /<Image\s/i.test(tagText)) {
-        return 'img';
-    } else if (/<video\s/i.test(tagText) || /<source\s/i.test(tagText)) {
-        return 'video';
-    }
-
-    return null;
-}
-
-// 選択範囲内のすべてのタグを検出する関数（ReDoS対策版）
-function detectAllTags(editor: vscode.TextEditor, selection: vscode.Selection): Array<{type: 'img' | 'video', range: vscode.Range, text: string}> {
-    const document = editor.document;
-    const selectedText = document.getText(selection);
-    const startOffset = document.offsetAt(selection.start);
-    const tags: Array<{type: 'img' | 'video', range: vscode.Range, text: string}> = [];
-
-    // 最大検索長（ReDoS対策）
-    const maxSearchLength = 100000;
-    if (selectedText.length > maxSearchLength) {
-        vscode.window.showWarningMessage('Selected text is too large for tag detection');
-        return tags;
-    }
-
-    // imgとImageタグを検出（属性長を制限してReDoS対策）
-    const imgRegex = /<(img|Image)\s[^>]{0,1000}>/gi;
-    let match;
-    const startTime = Date.now();
-    const timeout = 5000; // 5秒タイムアウト
-
-    while ((match = imgRegex.exec(selectedText)) !== null) {
-        if (Date.now() - startTime > timeout) {
-            vscode.window.showWarningMessage('Tag detection timeout - text may be too complex');
-            break;
-        }
-        const tagStart = startOffset + match.index;
-        const tagEnd = tagStart + match[0].length;
-        const range = new vscode.Range(
-            document.positionAt(tagStart),
-            document.positionAt(tagEnd)
-        );
-        tags.push({ type: 'img', range, text: match[0] });
-    }
-
-    // videoタグを検出（より安全な2パスアプローチ）
-    const videoOpenRegex = /<video\s[^>]{0,500}>/gi;
-    while ((match = videoOpenRegex.exec(selectedText)) !== null) {
-        if (Date.now() - startTime > timeout) {
-            vscode.window.showWarningMessage('Tag detection timeout - text may be too complex');
-            break;
-        }
-        const openStart = match.index;
-        const openEnd = openStart + match[0].length;
-
-        // 閉じタグを探す（最大長制限）
-        const closeTag = '</video>';
-        const closeIndex = selectedText.indexOf(closeTag, openEnd);
-
-        let tagEnd: number;
-        if (closeIndex !== -1 && closeIndex - openStart < 50000) {
-            tagEnd = closeIndex + closeTag.length;
-        } else {
-            // 自己閉じタグの場合
-            if (match[0].endsWith('/>')) {
-                tagEnd = openEnd;
-            } else {
-                continue; // 閉じタグが見つからない
-            }
-        }
-
-        const tagStart = startOffset + openStart;
-        const range = new vscode.Range(
-            document.positionAt(tagStart),
-            document.positionAt(startOffset + tagEnd)
-        );
-        tags.push({ type: 'video', range, text: selectedText.substring(openStart, tagEnd) });
-    }
-
-    return tags;
-}
+// Services
+import { detectStaticFileDirectory } from './services/frameworkDetector';
 
 export async function activate(context: vscode.ExtensionContext) {
     // 起動時にAPIキーを伏せ字表示に変換
@@ -438,27 +108,28 @@ async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<voi
     const config = vscode.workspace.getConfiguration('altGenGemini');
     const displayedKey = config.get<string>('geminiApiKey', '');
 
-    console.log('[ALT Generator] handleApiKeyChange called');
-    console.log('[ALT Generator] displayedKey:', displayedKey ? `${displayedKey.substring(0, 4)}...` : 'empty');
+    // Debug: API key change event
+    // console.log('[ALT Generator] handleApiKeyChange called');
+    // console.log('[ALT Generator] displayedKey:', displayedKey ? `${displayedKey.substring(0, 4)}...` : 'empty');
 
     // 空の場合はAPIキーを削除
     if (!displayedKey || displayedKey.trim() === '') {
-        console.log('[ALT Generator] Deleting API key from secrets...');
+        // console.log('[ALT Generator] Deleting API key from secrets...');
         await context.secrets.delete('altGenGemini.geminiApiKey');
         await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
         await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
-        console.log('[ALT Generator] API key deleted successfully');
+        // console.log('[ALT Generator] API key deleted successfully');
         vscode.window.showInformationMessage('✅ API Key deleted from settings');
         return;
     }
 
     // 既にマスク済みの場合は何もしない（*や.を含む場合）
     if (displayedKey.includes('*') || /^\.+/.test(displayedKey)) {
-        console.log('[ALT Generator] API key is already masked, skipping...');
+        // console.log('[ALT Generator] API key is already masked, skipping...');
         return;
     }
 
-    console.log('[ALT Generator] Storing new API key...');
+    // console.log('[ALT Generator] Storing new API key...');
     // 新しいAPIキーとして保存
     await context.secrets.store('altGenGemini.geminiApiKey', displayedKey);
 
@@ -469,7 +140,7 @@ async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<voi
 
     await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
     await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
-    console.log('[ALT Generator] New API key stored and masked');
+    // console.log('[ALT Generator] New API key stored and masked');
 }
 
 // 起動時にAPIキーを伏せ字表示
@@ -478,9 +149,10 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
     const displayedKey = config.get<string>('geminiApiKey', '');
     const storedKey = await context.secrets.get('altGenGemini.geminiApiKey');
 
-    console.log('[ALT Generator] maskApiKeyInSettings called');
-    console.log('[ALT Generator] displayedKey length:', displayedKey.length);
-    console.log('[ALT Generator] storedKey exists:', !!storedKey);
+    // Debug: API key masking on startup
+    // console.log('[ALT Generator] maskApiKeyInSettings called');
+    // console.log('[ALT Generator] displayedKey length:', displayedKey.length);
+    // console.log('[ALT Generator] storedKey exists:', !!storedKey);
 
     // 設定画面が空の場合、Secretsも削除（settings.jsonを直接編集して削除した場合に対応）
     if (!displayedKey || displayedKey.trim() === '') {
@@ -492,10 +164,10 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
 
     // 設定画面にマスクされていない生のAPIキーがある場合
     const isAlreadyMasked = displayedKey.includes('*') || /^\.+/.test(displayedKey);
-    console.log('[ALT Generator] isAlreadyMasked:', isAlreadyMasked);
+    // console.log('[ALT Generator] isAlreadyMasked:', isAlreadyMasked);
 
     if (!isAlreadyMasked) {
-        console.log('[ALT Generator] Masking API key...');
+        // console.log('[ALT Generator] Masking API key...');
         // Secretsに保存
         await context.secrets.store('altGenGemini.geminiApiKey', displayedKey);
 
@@ -504,13 +176,13 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
             ? '.'.repeat(displayedKey.length - 4) + displayedKey.substring(displayedKey.length - 4)
             : '.'.repeat(displayedKey.length);
 
-        console.log('[ALT Generator] Masked key:', maskedKey);
+        // console.log('[ALT Generator] Masked key:', maskedKey);
 
         // GlobalとWorkspace両方を更新
         await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
         await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
 
-        console.log('[ALT Generator] API key masked successfully');
+        // console.log('[ALT Generator] API key masked successfully');
     }
 }
 
@@ -580,13 +252,8 @@ async function processMultipleTags(
                     );
 
                     if (choice === 'Insert') {
-                        // エディタが有効かチェック
-                        if (editor && !editor.document.isClosed) {
-                            await editor.edit(editBuilder => {
-                                editBuilder.replace(result.actualSelection, result.newText);
-                            });
-                        } else {
-                            vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
+                        const success = await safeEditDocument(editor, result.actualSelection, result.newText);
+                        if (!success) {
                             return;
                         }
                     } else if (choice === 'Cancel') {
@@ -629,13 +296,8 @@ async function processMultipleTags(
                 );
 
                 if (choice === 'Insert') {
-                    // エディタが有効かチェック
-                    if (editor && !editor.document.isClosed) {
-                        await editor.edit(editBuilder => {
-                            editBuilder.replace(selection, result.newText);
-                        });
-                    } else {
-                        vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
+                    const success = await safeEditDocument(editor, selection, result.newText);
+                    if (!success) {
                         return;
                     }
                 } else if (choice === 'Cancel') {
@@ -655,76 +317,6 @@ async function processMultipleTags(
             vscode.window.showInformationMessage(formatMessage('Processed {0} images', totalCount));
         }
     });
-}
-
-// 画像ファイル名を抽出
-function extractImageFileName(tagText: string): string {
-    // 通常の引用符形式を試行
-    let match = tagText.match(/src=(["'])([^"']+)\1/);
-    if (match) {
-        return path.basename(match[2]);
-    }
-
-    // JSX形式を試行
-    const jsxMatch = tagText.match(/src=\{["']?([^"'}]+)["']?\}/);
-    if (jsxMatch) {
-        return path.basename(jsxMatch[1]);
-    }
-
-    return 'unknown';
-}
-
-// 動画ファイル名を抽出
-function extractVideoFileName(tagText: string): string {
-    const match = tagText.match(/src=["']([^"']+)["']/);
-    if (match) {
-        return path.basename(match[1]);
-    }
-    return 'unknown';
-}
-
-// フレームワークの静的ファイルディレクトリを検出
-function detectStaticFileDirectory(workspacePath: string): string | null {
-    try {
-        const packageJsonPath = path.join(workspacePath, 'package.json');
-
-        if (!fs.existsSync(packageJsonPath)) {
-            return null;
-        }
-
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-        const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
-
-        // Next.js - publicディレクトリ
-        if (dependencies['next']) {
-            return 'public';
-        }
-
-        // Astro - publicディレクトリ
-        if (dependencies['astro']) {
-            return 'public';
-        }
-
-        // Remix - publicディレクトリ
-        if (dependencies['@remix-run/react'] || dependencies['remix']) {
-            return 'public';
-        }
-
-        // Vite (一般的にはpublicディレクトリ)
-        if (dependencies['vite']) {
-            return 'public';
-        }
-
-        // Create React App - publicディレクトリ
-        if (dependencies['react-scripts']) {
-            return 'public';
-        }
-
-        return null;
-    } catch (error) {
-        console.error('Failed to detect framework:', error);
-        return null;
-    }
 }
 
 // imgタグのALT生成処理
@@ -763,13 +355,8 @@ async function generateAltForImages(context: vscode.ExtensionContext, editor: vs
                         );
 
                         if (choice === 'Insert') {
-                            // エディタが有効かチェック
-                            if (editor && !editor.document.isClosed) {
-                                await editor.edit(editBuilder => {
-                                    editBuilder.replace(result.actualSelection, result.newText);
-                                });
-                            } else {
-                                vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
+                            const success = await safeEditDocument(editor, result.actualSelection, result.newText);
+                            if (!success) {
                                 return;
                             }
                         } else if (choice === 'Cancel') {
@@ -897,14 +484,9 @@ async function processVideoTag(
     // autoモードの場合は自動挿入
     const insertionMode = config.get<string>('insertionMode', 'auto');
     if (insertionMode === 'auto') {
-        // エディタが有効かチェック
-        if (editor && !editor.document.isClosed) {
-            await editor.edit(editBuilder => {
-                editBuilder.replace(selection, newText);
-            });
+        const success = await safeEditDocument(editor, selection, newText);
+        if (success) {
             vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
-        } else {
-            vscode.window.showWarningMessage('Editor was closed during aria-label generation. Please try again.');
         }
     } else {
         // confirmモード用に結果を返す
@@ -1070,14 +652,9 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
                 }
 
                 // テキストを置換
-                // エディタが有効かチェック
-                if (editor && !editor.document.isClosed) {
-                    await editor.edit(editBuilder => {
-                        editBuilder.replace(actualSelection, newText);
-                    });
+                const success = await safeEditDocument(editor, actualSelection, newText);
+                if (success) {
                     vscode.window.showInformationMessage(formatMessage('aria-label generated: {0}', ariaLabel));
-                } else {
-                    vscode.window.showWarningMessage('Editor was closed during aria-label generation. Please try again.');
                 }
             } catch (error) {
                 // キャンセルエラーは無視
@@ -1217,14 +794,9 @@ async function processImgTag(
         }
 
         if (insertionMode === 'auto') {
-            // エディタが有効かチェック
-            if (editor && !editor.document.isClosed) {
-                await editor.edit(editBuilder => {
-                    editBuilder.replace(actualSelection, newText);
-                });
+            const success = await safeEditDocument(editor, actualSelection, newText);
+            if (success) {
                 vscode.window.showInformationMessage('Detected as decorative image: alt="" was set');
-            } else {
-                vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
             }
         } else {
             return {selection, altText: 'Detected as decorative image. Empty alt will be inserted.', newText, actualSelection};
@@ -1323,15 +895,13 @@ async function processImgTag(
         return;
     }
 
-    // 周辺テキストを取得（A11Yモードかつ設定が有効な場合）
+    // 周辺テキストを取得（設定が有効な場合）
     let surroundingText: string | undefined;
-    if (generationMode === 'A11Y') {
-        const contextEnabled = config.get<boolean>('a11yContextEnabled', true);
-        const contextRange = config.get<number>('a11yContextRange', 1500);
+    const contextEnabled = config.get<boolean>('contextEnabled', true);
+    const contextRange = getContextRangeValue();
 
-        if (contextEnabled) {
-            surroundingText = extractSurroundingText(document, actualSelection, contextRange);
-        }
+    if (contextEnabled) {
+        surroundingText = extractSurroundingText(document, actualSelection, contextRange);
     }
 
     // Gemini APIを呼び出してALTテキストを生成
@@ -1372,14 +942,9 @@ async function processImgTag(
             }
 
             if (insertionMode === 'auto') {
-                // エディタが有効かチェック
-                if (editor && !editor.document.isClosed) {
-                    await editor.edit(editBuilder => {
-                        editBuilder.replace(actualSelection, newText);
-                    });
+                const success = await safeEditDocument(editor, actualSelection, newText);
+                if (success) {
                     vscode.window.showInformationMessage('Image is already described by surrounding text: alt="" was set');
-                } else {
-                    vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
                 }
             } else {
                 return {selection, altText: 'Image is already described by surrounding text. Empty alt will be inserted.', newText, actualSelection};
@@ -1410,14 +975,9 @@ async function processImgTag(
         // 挿入モードによって処理を分岐
         if (insertionMode === 'auto') {
             // 自動挿入モード
-            // エディタが有効かチェック
-            if (editor && !editor.document.isClosed) {
-                await editor.edit(editBuilder => {
-                    editBuilder.replace(actualSelection, newText);
-                });
+            const success = await safeEditDocument(editor, actualSelection, newText);
+            if (success) {
                 vscode.window.showInformationMessage(formatMessage('ALT attribute generated: {0}', altText));
-            } else {
-                vscode.window.showWarningMessage('Editor was closed during ALT generation. Please try again.');
             }
         } else {
             // 確認後挿入モード
@@ -1430,367 +990,6 @@ async function processImgTag(
         }
         vscode.window.showErrorMessage(formatMessage('Error: {0}', error instanceof Error ? error.message : String(error)));
     }
-}
-
-async function generateAltText(apiKey: string, base64Image: string, mimeType: string, mode: string, model: string, token?: vscode.CancellationToken, surroundingText?: string): Promise<string> {
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
-    }
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
-    // 出力言語を取得
-    const outputLang = getOutputLanguage();
-
-    // 設定からプロンプトを取得
-    const config = vscode.workspace.getConfiguration('altGenGemini');
-    let prompt: string;
-    const languageConstraint = outputLang === 'ja' ? '\n5. Respond only in Japanese.' : '';
-
-    if (mode === 'A11Y') {
-        // A11Yモード - 設定からプロンプトを取得
-        const customPrompt = config.get<string>('promptA11y', '');
-        if (customPrompt && customPrompt.trim() !== '') {
-            prompt = customPrompt + languageConstraint;
-        } else {
-            // デフォルトプロンプト
-            // 文字数設定を取得
-            const descriptionLength = config.get<string>('a11yDescriptionLength', 'standard');
-
-            let charLengthConstraint: string;
-            if (outputLang === 'ja') {
-                if (descriptionLength === 'detailed') {
-                    charLengthConstraint = '100 and 200 Japanese characters (full-width characters)';
-                } else {
-                    // standard
-                    charLengthConstraint = '50 and 120 Japanese characters (full-width characters)';
-                }
-            } else {
-                if (descriptionLength === 'detailed') {
-                    charLengthConstraint = '100 and 200 characters';
-                } else {
-                    // standard
-                    charLengthConstraint = '60 and 130 characters';
-                }
-            }
-
-            // 周辺テキストがある場合は、重複判定のための指示を追加
-            let contextInstruction = '';
-            if (surroundingText) {
-                contextInstruction = `
-
-[SURROUNDING TEXT CONTEXT]
-The following text appears near the image in the page:
-
-${surroundingText}
-
-[IMPORTANT - AVOID REDUNDANCY]
-- If the surrounding text already fully describes the image content, return "DECORATIVE" (without quotes) to indicate that alt="" should be used (avoiding double reading by screen readers).
-- If the surrounding text partially describes the image, provide only a brief supplementary description (maximum 50 characters) that adds essential information not mentioned in the text.
-- If the surrounding text does not describe the image at all, provide a complete description following the standard constraints below.
-`;
-            }
-
-            prompt = `You are a web accessibility expert. Analyze the provided image's content and the role it plays within the page's context in detail. Your task is to generate ALT text that is completely understandable for users with visual impairments.${contextInstruction}
-
-[CONSTRAINTS]
-1. Completely describe the image content and do not omit any details.
-2. Where necessary, include the image's background, colors, actions, and emotions.
-3. The description must be a single, cohesive sentence between ${charLengthConstraint}.
-4. Do not include the words "image" or "photo".${languageConstraint}
-
-Return only the generated ALT text. No other conversation or explanation is required.`;
-        }
-    } else {
-        // SEOモード - 設定からプロンプトを取得
-        const customPrompt = config.get<string>('promptSeo', '');
-        if (customPrompt && customPrompt.trim() !== '') {
-            prompt = customPrompt + languageConstraint;
-        } else {
-            // デフォルトプロンプト
-            prompt = `You are an SEO expert. Analyze the provided image and generate the most effective single-sentence ALT text for SEO purposes.
-
-[CONSTRAINTS]
-1. Include 3-5 key search terms naturally.
-2. The description must be a single, concise sentence.
-3. Avoid unnecessary phrases like "image of" or "photo of" at the end.
-4. Do not include any information unrelated to the image.${languageConstraint}
-
-Return only the generated ALT text, without any further conversation or explanation.`;
-        }
-    }
-
-    const requestBody = {
-        contents: [{
-            parts: [
-                {
-                    text: prompt
-                },
-                {
-                    inline_data: {
-                        mime_type: mimeType,
-                        data: base64Image
-                    }
-                }
-            ]
-        }]
-    };
-
-    console.log('[ALT Generator] ========== Gemini API Request (Image ALT) ==========');
-    console.log('[ALT Generator] Mode:', mode);
-    console.log('[ALT Generator] Model:', model);
-    console.log('[ALT Generator] MIME Type:', mimeType);
-    console.log('[ALT Generator] Prompt:');
-    console.log(prompt);
-    console.log('[ALT Generator] =====================================================');
-
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
-    }
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
-        },
-        body: JSON.stringify(requestBody)
-    });
-
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
-    }
-
-    if (!response.ok) {
-        const errorBody = await response.text();
-
-        // 429エラー（レート制限）の場合、詳細メッセージを表示
-        if (response.status === 429) {
-            throw new Error('Rate limit exceeded (429 Too Many Requests).\n\nPossible causes:\n1. Too many requests per minute (RPM limit)\n2. Too many tokens per minute (TPM limit)\n\nSolutions:\n• Wait 1 minute and try again\n• Use Economy or Balanced image resize mode to reduce tokens\n• Process fewer images at once\n• Use decorative keywords to skip unnecessary images');
-        }
-
-        // その他のエラー
-        throw new Error(formatMessage('API Error {0}: {1}\n\nDetails: {2}', response.status.toString(), response.statusText, errorBody));
-    }
-
-    const data: any = await response.json();
-
-    // promptFeedbackのブロック理由をチェック
-    if (data.promptFeedback && data.promptFeedback.blockReason) {
-        console.error('API blocked the request:', JSON.stringify(data, null, 2));
-        const blockReason = data.promptFeedback.blockReason;
-        let errorMessage = 'Gemini API blocked the request.\n\n';
-
-        switch (blockReason) {
-            case 'SAFETY':
-                errorMessage += 'Reason: Safety filter triggered.\nThe image may contain content that violates safety policies.';
-                break;
-            case 'OTHER':
-                errorMessage += 'Reason: Content was blocked for unspecified reasons.\nThis may happen with certain types of images or content.';
-                break;
-            case 'BLOCKLIST':
-                errorMessage += 'Reason: Content matches a blocklist.';
-                break;
-            default:
-                errorMessage += `Reason: ${blockReason}`;
-        }
-
-        throw new Error(errorMessage);
-    }
-
-    // レスポンス構造の検証
-    if (!data.candidates || !Array.isArray(data.candidates) || data.candidates.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
-        throw new Error('API returned an unexpected response format. Please check console for details.');
-    }
-
-    if (!data.candidates[0].content || !data.candidates[0].content.parts || !Array.isArray(data.candidates[0].content.parts) || data.candidates[0].content.parts.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
-        throw new Error('API response is missing expected content. Please check console for details.');
-    }
-
-    const altText = data.candidates[0].content.parts[0].text.trim();
-
-    console.log('[ALT Generator] ========== Gemini API Response (Image ALT) ==========');
-    console.log('[ALT Generator] Generated ALT:', altText);
-    console.log('[ALT Generator] =====================================================');
-
-    return altText;
-}
-
-function getMimeType(filePath: string): string {
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes: { [key: string]: string } = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.bmp': 'image/bmp'
-    };
-    return mimeTypes[ext] || 'image/jpeg';
-}
-
-async function generateVideoAriaLabel(apiKey: string, base64Video: string, mimeType: string, model: string, token?: vscode.CancellationToken): Promise<string> {
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
-    }
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
-    // 出力言語を取得
-    const outputLang = getOutputLanguage();
-    const languageConstraint = outputLang === 'ja' ? '\n5. Respond only in Japanese.' : '';
-
-    // 設定からプロンプトを取得
-    const config = vscode.workspace.getConfiguration('altGenGemini');
-    const customPrompt = config.get<string>('promptVideo', '');
-
-    let prompt: string;
-    if (customPrompt && customPrompt.trim() !== '') {
-        // カスタムプロンプトに言語指定を追加
-        prompt = customPrompt + languageConstraint;
-    } else {
-        // デフォルトプロンプト
-        prompt = `You are a Web Accessibility and UX expert. Analyze the provided video content in detail and identify the role it plays within the page's context. Your task is to generate the optimal ARIA-LABEL text that briefly explains the video's purpose or function.
-
-[CONSTRAINTS]
-1. The generated ARIA-LABEL text must be a very short phrase, **no more than 10 words**.
-2. Focus on the video's **purpose or function**, not its **content or visual description**. (e.g., product demo, operation tutorial, background animation, etc.)
-3. Prioritize conciseness and use common language that will be easily understood by the user.
-4. Do not include the words "video," "movie," or "clip".${languageConstraint}
-
-Return only the generated ARIA-LABEL text. No other conversation or explanation is required.`;
-    }
-
-    const requestBody = {
-        contents: [{
-            parts: [
-                {
-                    text: prompt
-                },
-                {
-                    inline_data: {
-                        mime_type: mimeType,
-                        data: base64Video
-                    }
-                }
-            ]
-        }]
-    };
-
-    console.log('[ALT Generator] ========== Gemini API Request (Video aria-label) ==========');
-    console.log('[ALT Generator] Model:', model);
-    console.log('[ALT Generator] MIME Type:', mimeType);
-    console.log('[ALT Generator] Prompt:');
-    console.log(prompt);
-    console.log('[ALT Generator] =====================================================');
-
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
-    }
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
-        },
-        body: JSON.stringify(requestBody)
-    });
-
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
-    }
-
-    if (!response.ok) {
-        const errorBody = await response.text();
-
-        // 429エラー（レート制限）の場合、詳細メッセージを表示
-        if (response.status === 429) {
-            throw new Error('Rate limit exceeded (429 Too Many Requests).\n\nPossible causes:\n1. Too many requests per minute (RPM limit)\n2. Too many tokens per minute (TPM limit)\n\nSolutions:\n• Wait 1 minute and try again\n• Use Economy or Balanced image resize mode to reduce tokens\n• Process fewer images at once\n• Use decorative keywords to skip unnecessary images');
-        }
-
-        // その他のエラー
-        throw new Error(formatMessage('API Error {0}: {1}\n\nDetails: {2}', response.status.toString(), response.statusText, errorBody));
-    }
-
-    const data: any = await response.json();
-
-    // promptFeedbackのブロック理由をチェック
-    if (data.promptFeedback && data.promptFeedback.blockReason) {
-        console.error('API blocked the request:', JSON.stringify(data, null, 2));
-        const blockReason = data.promptFeedback.blockReason;
-        let errorMessage = 'Gemini API blocked the request.\n\n';
-
-        switch (blockReason) {
-            case 'SAFETY':
-                errorMessage += 'Reason: Safety filter triggered.\nThe video may contain content that violates safety policies.';
-                break;
-            case 'OTHER':
-                errorMessage += 'Reason: Content was blocked for unspecified reasons.\nThis may happen with certain types of videos or content.';
-                break;
-            case 'BLOCKLIST':
-                errorMessage += 'Reason: Content matches a blocklist.';
-                break;
-            default:
-                errorMessage += `Reason: ${blockReason}`;
-        }
-
-        throw new Error(errorMessage);
-    }
-
-    // レスポンス構造の検証
-    if (!data.candidates || !Array.isArray(data.candidates) || data.candidates.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
-        throw new Error('API returned an unexpected response format. Please check console for details.');
-    }
-
-    if (!data.candidates[0].content || !data.candidates[0].content.parts || !Array.isArray(data.candidates[0].content.parts) || data.candidates[0].content.parts.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
-        throw new Error('API response is missing expected content. Please check console for details.');
-    }
-
-    const ariaLabel = data.candidates[0].content.parts[0].text.trim();
-
-    console.log('[ALT Generator] ========== Gemini API Response (Video aria-label) ==========');
-    console.log('[ALT Generator] Generated aria-label:', ariaLabel);
-    console.log('[ALT Generator] =====================================================');
-
-    return ariaLabel;
-}
-
-function getVideoMimeType(filePath: string): string {
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes: { [key: string]: string } = {
-        '.mp4': 'video/mp4',
-        '.webm': 'video/webm',
-        '.ogg': 'video/ogg',
-        '.mov': 'video/quicktime',
-        '.avi': 'video/x-msvideo'
-    };
-    return mimeTypes[ext] || 'video/mp4';
-}
-
-// RPM制限に基づくレート制限関数
-async function waitForRateLimit(): Promise<void> {
-    const requestsPerMinute = 10; // 固定値: 10 RPM（無料枠推奨）
-    const minInterval = (60 * 1000) / requestsPerMinute; // ミリ秒単位の最小間隔
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastRequestTime;
-
-    if (timeSinceLastRequest < minInterval) {
-        const waitTime = minInterval - timeSinceLastRequest;
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-
-    lastRequestTime = Date.now();
 }
 
 export function deactivate() {}

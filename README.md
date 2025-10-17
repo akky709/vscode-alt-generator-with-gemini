@@ -111,7 +111,6 @@ Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
 - **Insertion Mode**: Auto (insert immediately) or Manual (review before insertion)
 - **Output Language**: Auto, Japanese, or English
 - **Decorative Keywords**: Customize keywords for decorative image detection
-- **Custom Prompts**: Override default prompts for SEO, A11Y, or video modes
 
 Or edit `settings.json`:
 ```json
@@ -167,54 +166,6 @@ Images with these keywords in filename are automatically assigned `alt=""`:
 - `deco-`
 
 Customize keywords in settings to match your project's naming conventions.
-
-## Custom Prompts
-
-You can customize the prompts used for generating ALT text and aria-labels. Leave empty to use the built-in defaults.
-
-### Default Prompt for SEO Mode
-
-```
-You are an SEO expert. Analyze the provided image and generate the most effective single-sentence ALT text for SEO purposes.
-
-[CONSTRAINTS]
-1. Include 3-5 key search terms naturally.
-2. The description must be a single, concise sentence.
-3. Avoid unnecessary phrases like "image of" or "photo of" at the end.
-4. Do not include any information unrelated to the image.
-
-Return only the generated ALT text, without any further conversation or explanation.
-```
-
-### Default Prompt for A11Y Mode
-
-```
-You are a web accessibility expert. Analyze the provided image's content and the role it plays within the page's context in detail. Your task is to generate ALT text that is completely understandable for users with visual impairments.
-
-[CONSTRAINTS]
-1. Completely describe the image content and do not omit any details.
-2. Where necessary, include the image's background, colors, actions, and emotions.
-3. The description must be a single, cohesive sentence between 100 and 200 characters.
-4. Do not include the words "image" or "photo".
-
-Return only the generated ALT text. No other conversation or explanation is required.
-```
-
-### Default Prompt for Video aria-label
-
-```
-You are a Web Accessibility and UX expert. Analyze the provided video content in detail and identify the role it plays within the page's context. Your task is to generate the optimal ARIA-LABEL text that briefly explains the video's purpose or function.
-
-[CONSTRAINTS]
-1. The generated ARIA-LABEL text must be a very short phrase, **no more than 10 words**.
-2. Focus on the video's **purpose or function**, not its **content or visual description**. (e.g., product demo, operation tutorial, background animation, etc.)
-3. Prioritize conciseness and use common language that will be easily understood by the user.
-4. Do not include the words "video," "movie," or "clip".
-
-Return only the generated ARIA-LABEL text. No other conversation or explanation is required.
-```
-
-**Note:** Custom prompts completely replace the default prompts. Language constraints (Japanese/English) are automatically added based on your Output Language setting.
 
 ## Troubleshooting
 

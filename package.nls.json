@@ -1,0 +1,47 @@
+{
+  "displayName": "ALT Generator with Gemini",
+  "description": "Auto-generate ALT attributes for img tags using Gemini API (supports HTML/PHP/JSX/TSX with static paths)",
+
+  "command.generateAlt": "Generate ALT attribute for img tags",
+  "command.generateVideoAriaLabel": "Generate aria-label attribute for video tags",
+  "command.clearApiKey": "Clear Gemini API Key (for debugging)",
+
+  "config.geminiApiKey.description": "Gemini API Key",
+  "config.geminiApiKey.markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))  \n\n**Note:** The API key is stored securely and displayed as dots for security.  \n[Clear API Key](command:alt-generator.clearApiKey)",
+
+  "config.geminiApiModel.description": "Gemini API Model",
+  "config.geminiApiModel.markdownDescription": "Gemini API model to use",
+  "config.geminiApiModel.enum.pro": "Most advanced model for complex tasks",
+  "config.geminiApiModel.enum.flash": "Fast and intelligent (recommended)",
+  "config.geminiApiModel.enum.flash8b": "Ultra-fast processing",
+
+  "config.generationMode.description": "Generation Mode",
+  "config.generationMode.enum.seo": "SEO: Content optimized for search engines and crawlers",
+  "config.generationMode.enum.a11y": "A11Y: Content optimized for screen reader users",
+
+  "config.insertionMode.description": "Insertion Mode",
+  "config.insertionMode.enum.auto": "Insert generated ALT tags immediately",
+  "config.insertionMode.enum.confirm": "Review before insertion",
+
+  "config.outputLanguage.description": "Output Language",
+
+  "config.decorativeKeywords.description": "Decorative Image Keywords",
+
+  "config.a11yDescriptionLength.description": "A11Y Description Length",
+  "config.a11yDescriptionLength.markdownDescription": "**A11Y mode only:** Control the level of detail in generated ALT text descriptions.",
+  "config.a11yDescriptionLength.enum.standard": "Standard: Balanced descriptions that provide essential information (50-120 chars for Japanese, 60-130 chars for English)",
+  "config.a11yDescriptionLength.enum.detailed": "Detailed: Comprehensive descriptions for complex images (100-200 chars for Japanese, 100-200 chars for English)",
+
+  "config.contextEnabled.description": "Analyze Surrounding Text",
+  "config.contextEnabled.markdownDescription": "Analyze surrounding text (sibling and parent elements) to avoid redundant ALT descriptions.  \n\n**Note:** This increases token usage (~100-400 tokens per image) but improves content quality for both SEO and accessibility.",
+
+  "config.contextRange.description": "Context Search Range",
+  "config.contextRange.markdownDescription": "How far to search before and after the image for sibling and parent elements containing relevant text.",
+  "config.contextRange.enum.narrow": "Narrow (500 chars): Searches nearby elements - suitable for simple layouts",
+  "config.contextRange.enum.standard": "Standard (1500 chars): Searches distant elements - recommended for most cases",
+  "config.contextRange.enum.wide": "Wide (3000 chars): Searches very distant elements - for complex nested structures",
+  "config.contextRange.enum.veryWide": "Very Wide (5000 chars): Maximum search range - for extremely complex page structures",
+
+  "config.customPromptsPath.description": "Custom Prompts File Path",
+  "config.customPromptsPath.markdownDescription": "Path to custom prompts JSON file (relative to workspace root).  \n\nCustom prompts override default prompts. If the file doesn't exist, default prompts are used.  \n\n**Example:** `.vscode/alt-prompts.json`"
+}

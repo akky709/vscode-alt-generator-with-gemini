@@ -1,7 +1,7 @@
 {
   "name": "alt-tag-generator",
-  "displayName": "ALT Generator with Gemini",
-  "description": "Auto-generate ALT attributes for img tags using Gemini API (supports HTML/PHP/JSX/TSX with static paths)",
+  "displayName": "%displayName%",
+  "description": "%description%",
   "version": "1.0.0",
   "publisher": "akky",
   "icon": "images/icon.png",
@@ -23,6 +23,8 @@
     "images/**",
     "README.md",
     "LICENSE",
+    "package.nls.json",
+    "package.nls.*.json",
     "node_modules/node-fetch/**",
     "node_modules/whatwg-url/**",
     "node_modules/tr46/**",
@@ -33,15 +35,15 @@
     "commands": [
       {
         "command": "alt-generator.generateAlt",
-        "title": "Generate ALT attribute for img tags"
+        "title": "%command.generateAlt%"
       },
       {
         "command": "alt-generator.generateVideoAriaLabel",
-        "title": "Generate aria-label attribute for video tags"
+        "title": "%command.generateVideoAriaLabel%"
       },
       {
         "command": "alt-generator.clearApiKey",
-        "title": "Clear Gemini API Key (for debugging)"
+        "title": "%command.clearApiKey%"
       }
     ],
     "configuration": {
@@ -50,8 +52,8 @@
           "order": 0,
           "type": "string",
           "default": "",
-          "description": "Gemini API Key",
-          "markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))  \n\n**Note:** The API key is stored securely and displayed as dots for security.  \n[Clear API Key](command:alt-generator.clearApiKey)",
+          "description": "%config.geminiApiKey.description%",
+          "markdownDescription": "%config.geminiApiKey.markdownDescription%",
           "editPresentation": "singlelineText"
         },
         "altGenGemini.geminiApiModel": {
@@ -64,17 +66,17 @@
             "gemini-2.5-flash-8b"
           ],
           "enumDescriptions": [
-            "Most advanced model for complex tasks",
-            "Fast and intelligent (recommended)",
-            "Ultra-fast processing"
+            "%config.geminiApiModel.enum.pro%",
+            "%config.geminiApiModel.enum.flash%",
+            "%config.geminiApiModel.enum.flash8b%"
           ],
           "enumItemLabels": [
             "Gemini 2.5 Pro",
             "Gemini 2.5 Flash (Recommended)",
             "Gemini 2.5 Flash-Lite"
           ],
-          "description": "Gemini API Model",
-          "markdownDescription": "Gemini API model to use"
+          "description": "%config.geminiApiModel.description%",
+          "markdownDescription": "%config.geminiApiModel.markdownDescription%"
         },
         "altGenGemini.generationMode": {
           "order": 2,
@@ -85,36 +87,17 @@
             "A11Y"
           ],
           "enumDescriptions": [
-            "SEO: Content optimized for search engines and crawlers",
-            "A11Y: Content optimized for screen reader users"
+            "%config.generationMode.enum.seo%",
+            "%config.generationMode.enum.a11y%"
           ],
           "enumItemLabels": [
             "SEO",
             "A11Y"
           ],
-          "description": "Generation Mode"
-        },
-        "altGenGemini.a11yDescriptionLength": {
-          "order": 3,
-          "type": "string",
-          "default": "standard",
-          "enum": [
-            "standard",
-            "detailed"
-          ],
-          "enumDescriptions": [
-            "Standard: Balanced descriptions that provide essential information (50-120 chars for Japanese, 60-130 chars for English)",
-            "Detailed: Comprehensive descriptions for complex images (100-200 chars for Japanese, 100-200 chars for English)"
-          ],
-          "enumItemLabels": [
-            "Standard",
-            "Detailed"
-          ],
-          "description": "A11Y Description Length",
-          "markdownDescription": "**A11Y mode only:** Control the level of detail in generated ALT text descriptions.  \n\n**Standard** (Recommended): Provides clear, essential information without being verbose. Suitable for most images.  \n**Detailed**: Includes comprehensive details about colors, layout, emotions, and context. Best for complex images or when detailed description is critical for understanding.  \n\n**Note:** The surrounding text analysis feature already helps avoid redundancy, so both options maintain good accessibility."
+          "description": "%config.generationMode.description%"
         },
         "altGenGemini.insertionMode": {
-          "order": 4,
+          "order": 3,
           "type": "string",
           "default": "auto",
           "enum": [
@@ -122,17 +105,17 @@
             "confirm"
           ],
           "enumDescriptions": [
-            "Insert generated ALT tags immediately",
-            "Review before insertion"
+            "%config.insertionMode.enum.auto%",
+            "%config.insertionMode.enum.confirm%"
           ],
           "enumItemLabels": [
             "Auto",
             "Manual"
           ],
-          "description": "Insertion Mode"
+          "description": "%config.insertionMode.description%"
         },
         "altGenGemini.outputLanguage": {
-          "order": 5,
+          "order": 4,
           "type": "string",
           "default": "auto",
           "enum": [
@@ -145,10 +128,10 @@
             "日本語",
             "English"
           ],
-          "description": "Output Language"
+          "description": "%config.outputLanguage.description%"
         },
         "altGenGemini.decorativeKeywords": {
-          "order": 6,
+          "order": 5,
           "type": "array",
           "default": [
             "icon-",
@@ -158,47 +141,65 @@
           "items": {
             "type": "string"
           },
-          "description": "Decorative Image Keywords"
+          "description": "%config.decorativeKeywords.description%"
         },
-        "altGenGemini.promptSeo": {
+        "altGenGemini.a11yDescriptionLength": {
+          "order": 6,
+          "type": "string",
+          "default": "standard",
+          "enum": [
+            "standard",
+            "detailed"
+          ],
+          "enumDescriptions": [
+            "%config.a11yDescriptionLength.enum.standard%",
+            "%config.a11yDescriptionLength.enum.detailed%"
+          ],
+          "enumItemLabels": [
+            "Standard (Recommended)",
+            "Detailed"
+          ],
+          "description": "%config.a11yDescriptionLength.description%",
+          "markdownDescription": "%config.a11yDescriptionLength.markdownDescription%"
+        },
+        "altGenGemini.contextEnabled": {
           "order": 7,
-          "type": "string",
-          "default": "",
-          "editPresentation": "multilineText",
-          "description": "Custom Prompt for SEO Mode",
-          "markdownDescription": "Custom prompt for SEO mode. Leave empty to use built-in defaults. See README for details."
-        },
-        "altGenGemini.promptA11y": {
-          "order": 8,
-          "type": "string",
-          "default": "",
-          "editPresentation": "multilineText",
-          "description": "Custom Prompt for A11Y Mode",
-          "markdownDescription": "Custom prompt for A11Y mode. Leave empty to use built-in defaults. See README for details."
-        },
-        "altGenGemini.promptVideo": {
-          "order": 9,
-          "type": "string",
-          "default": "",
-          "editPresentation": "multilineText",
-          "description": "Custom Prompt for Video Mode",
-          "markdownDescription": "Custom prompt for video aria-label. Leave empty to use built-in defaults. See README for details."
-        },
-        "altGenGemini.a11yContextEnabled": {
-          "order": 10,
           "type": "boolean",
           "default": true,
-          "description": "A11Y: Analyze Surrounding Text",
-          "markdownDescription": "**A11Y mode only:** Analyze surrounding text to avoid redundant ALT descriptions.  \n\n**How it works:**  \n- Finds parent elements (like `<section>`, `<div>`) containing the image  \n- Sends the text within those elements to Gemini AI along with the image  \n- If the text already describes the image, sets `alt=\"\"` to prevent double reading by screen readers  \n\n**Note:** This increases token usage (~100-400 tokens per image) but significantly improves accessibility."
+          "description": "%config.contextEnabled.description%",
+          "markdownDescription": "%config.contextEnabled.markdownDescription%"
         },
-        "altGenGemini.a11yContextRange": {
-          "order": 11,
-          "type": "number",
-          "default": 1500,
-          "minimum": 200,
-          "maximum": 5000,
-          "description": "A11Y: Context Search Range",
-          "markdownDescription": "**A11Y mode only:** How far to search for parent elements containing relevant text (in characters).  \n\n**Examples:**  \n- `500`: Finds nearby parent elements (simple layouts)  \n- `1500`: Finds distant parent elements (nested layouts) ← Recommended  \n- `3000+`: For very complex page structures  \n\n**Note:** Larger values improve accuracy without increasing token usage."
+        "altGenGemini.contextRange": {
+          "order": 8,
+          "type": "string",
+          "default": "standard",
+          "enum": [
+            "narrow",
+            "standard",
+            "wide",
+            "very-wide"
+          ],
+          "enumDescriptions": [
+            "%config.contextRange.enum.narrow%",
+            "%config.contextRange.enum.standard%",
+            "%config.contextRange.enum.wide%",
+            "%config.contextRange.enum.veryWide%"
+          ],
+          "enumItemLabels": [
+            "Narrow",
+            "Standard (Recommended)",
+            "Wide",
+            "Very Wide"
+          ],
+          "description": "%config.contextRange.description%",
+          "markdownDescription": "%config.contextRange.markdownDescription%"
+        },
+        "altGenGemini.customPromptsPath": {
+          "order": 9,
+          "type": "string",
+          "default": ".vscode/alt-prompts.json",
+          "description": "%config.customPromptsPath.description%",
+          "markdownDescription": "%config.customPromptsPath.markdownDescription%"
         }
       }
     },
@@ -215,7 +216,21 @@
         "mac": "cmd+alt+v",
         "when": "editorTextFocus"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "alt-generator.generateAlt",
+          "group": "1_modification@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "alt-generator.generateVideoAriaLabel",
+          "group": "1_modification@2",
+          "when": "editorTextFocus"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

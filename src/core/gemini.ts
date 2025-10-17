@@ -3,11 +3,12 @@
  */
 
 import * as vscode from 'vscode';
-import fetch from 'node-fetch';
+import fetch, { Response } from 'node-fetch';
 import { getDefaultPrompt, getCharConstraint } from './prompts';
 import { getOutputLanguage } from '../utils/config';
-import { formatMessage } from '../utils/textUtils';
 import { waitForRateLimit } from '../utils/rateLimit';
+import { CancellationError, NetworkError } from '../utils/errors';
+import { handleHttpError, handleContentBlocked, validateResponseStructure } from '../utils/errorHandler';
 
 /**
  * Generate ALT text for an image using Gemini API
@@ -71,70 +72,51 @@ export async function generateAltText(
 
     // キャンセルチェック
     if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
+        throw new CancellationError();
     }
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
-        },
-        body: JSON.stringify(requestBody)
-    });
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify(requestBody)
+        });
+    } catch (error: any) {
+        // Network errors (connection failed, DNS errors, etc.)
+        throw new NetworkError(
+            'Failed to connect to Gemini API.\n\n' +
+            'Possible causes:\n' +
+            '1. No internet connection\n' +
+            '2. Network firewall blocking the request\n' +
+            '3. DNS resolution failed\n\n' +
+            `Error details: ${error.message}`
+        );
+    }
 
     // キャンセルチェック
     if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
+        throw new CancellationError();
     }
 
+    // Handle HTTP errors
     if (!response.ok) {
-        const errorBody = await response.text();
-
-        // 429エラー（レート制限）の場合、詳細メッセージを表示
-        if (response.status === 429) {
-            throw new Error('Rate limit exceeded (429 Too Many Requests).\n\nPossible causes:\n1. Too many requests per minute (RPM limit)\n2. Too many tokens per minute (TPM limit)\n\nSolutions:\n• Wait 1 minute and try again\n• Use Economy or Balanced image resize mode to reduce tokens\n• Process fewer images at once\n• Use decorative keywords to skip unnecessary images');
-        }
-
-        // その他のエラー
-        throw new Error(formatMessage('API Error {0}: {1}\n\nDetails: {2}', response.status.toString(), response.statusText, errorBody));
+        await handleHttpError(response);
     }
 
     const data: any = await response.json();
 
-    // promptFeedbackのブロック理由をチェック
+    // Check for content blocked by safety filters
     if (data.promptFeedback && data.promptFeedback.blockReason) {
         console.error('API blocked the request:', JSON.stringify(data, null, 2));
-        const blockReason = data.promptFeedback.blockReason;
-        let errorMessage = 'Gemini API blocked the request.\n\n';
-
-        switch (blockReason) {
-            case 'SAFETY':
-                errorMessage += 'Reason: Safety filter triggered.\nThe image may contain content that violates safety policies.';
-                break;
-            case 'OTHER':
-                errorMessage += 'Reason: Content was blocked for unspecified reasons.\nThis may happen with certain types of images or content.';
-                break;
-            case 'BLOCKLIST':
-                errorMessage += 'Reason: Content matches a blocklist.';
-                break;
-            default:
-                errorMessage += `Reason: ${blockReason}`;
-        }
-
-        throw new Error(errorMessage);
+        handleContentBlocked(data.promptFeedback.blockReason, 'image');
     }
 
-    // レスポンス構造の検証
-    if (!data.candidates || !Array.isArray(data.candidates) || data.candidates.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
-        throw new Error('API returned an unexpected response format. Please check console for details.');
-    }
-
-    if (!data.candidates[0].content || !data.candidates[0].content.parts || !Array.isArray(data.candidates[0].content.parts) || data.candidates[0].content.parts.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
-        throw new Error('API response is missing expected content. Please check console for details.');
-    }
+    // Validate response structure
+    validateResponseStructure(data);
 
     const altText = data.candidates[0].content.parts[0].text.trim();
 
@@ -182,70 +164,51 @@ export async function generateVideoAriaLabel(
 
     // キャンセルチェック
     if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
+        throw new CancellationError();
     }
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
-        },
-        body: JSON.stringify(requestBody)
-    });
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify(requestBody)
+        });
+    } catch (error: any) {
+        // Network errors (connection failed, DNS errors, etc.)
+        throw new NetworkError(
+            'Failed to connect to Gemini API.\n\n' +
+            'Possible causes:\n' +
+            '1. No internet connection\n' +
+            '2. Network firewall blocking the request\n' +
+            '3. DNS resolution failed\n\n' +
+            `Error details: ${error.message}`
+        );
+    }
 
     // キャンセルチェック
     if (token?.isCancellationRequested) {
-        throw new Error('Cancelled');
+        throw new CancellationError();
     }
 
+    // Handle HTTP errors
     if (!response.ok) {
-        const errorBody = await response.text();
-
-        // 429エラー（レート制限）の場合、詳細メッセージを表示
-        if (response.status === 429) {
-            throw new Error('Rate limit exceeded (429 Too Many Requests).\n\nPossible causes:\n1. Too many requests per minute (RPM limit)\n2. Too many tokens per minute (TPM limit)\n\nSolutions:\n• Wait 1 minute and try again\n• Use Economy or Balanced image resize mode to reduce tokens\n• Process fewer images at once\n• Use decorative keywords to skip unnecessary images');
-        }
-
-        // その他のエラー
-        throw new Error(formatMessage('API Error {0}: {1}\n\nDetails: {2}', response.status.toString(), response.statusText, errorBody));
+        await handleHttpError(response);
     }
 
     const data: any = await response.json();
 
-    // promptFeedbackのブロック理由をチェック
+    // Check for content blocked by safety filters
     if (data.promptFeedback && data.promptFeedback.blockReason) {
         console.error('API blocked the request:', JSON.stringify(data, null, 2));
-        const blockReason = data.promptFeedback.blockReason;
-        let errorMessage = 'Gemini API blocked the request.\n\n';
-
-        switch (blockReason) {
-            case 'SAFETY':
-                errorMessage += 'Reason: Safety filter triggered.\nThe video may contain content that violates safety policies.';
-                break;
-            case 'OTHER':
-                errorMessage += 'Reason: Content was blocked for unspecified reasons.\nThis may happen with certain types of videos or content.';
-                break;
-            case 'BLOCKLIST':
-                errorMessage += 'Reason: Content matches a blocklist.';
-                break;
-            default:
-                errorMessage += `Reason: ${blockReason}`;
-        }
-
-        throw new Error(errorMessage);
+        handleContentBlocked(data.promptFeedback.blockReason, 'video');
     }
 
-    // レスポンス構造の検証
-    if (!data.candidates || !Array.isArray(data.candidates) || data.candidates.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
-        throw new Error('API returned an unexpected response format. Please check console for details.');
-    }
-
-    if (!data.candidates[0].content || !data.candidates[0].content.parts || !Array.isArray(data.candidates[0].content.parts) || data.candidates[0].content.parts.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
-        throw new Error('API response is missing expected content. Please check console for details.');
-    }
+    // Validate response structure
+    validateResponseStructure(data);
 
     const ariaLabel = data.candidates[0].content.parts[0].text.trim();
 

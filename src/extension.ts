@@ -13,6 +13,8 @@ import { formatMessage, extractSurroundingText } from './utils/textUtils';
 import { detectTagType, detectAllTags, extractImageFileName, extractVideoFileName } from './utils/tagUtils';
 import { getContextRangeValue } from './utils/config';
 import { waitForRateLimit } from './utils/rateLimit';
+import { getUserFriendlyErrorMessage } from './utils/errorHandler';
+import { CancellationError } from './utils/errors';
 
 // Services
 import { detectStaticFileDirectory } from './services/frameworkDetector';
@@ -658,10 +660,11 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
                 }
             } catch (error) {
                 // キャンセルエラーは無視
-                if (token.isCancellationRequested) {
+                if (error instanceof CancellationError || token.isCancellationRequested) {
                     return;
                 }
-                vscode.window.showErrorMessage(formatMessage('Error: {0}', error instanceof Error ? error.message : String(error)));
+                const errorMessage = getUserFriendlyErrorMessage(error);
+                vscode.window.showErrorMessage(errorMessage);
             }
         });
 }
@@ -985,10 +988,11 @@ async function processImgTag(
         }
     } catch (error) {
         // キャンセルエラーは無視
-        if (token?.isCancellationRequested) {
+        if (error instanceof CancellationError || token?.isCancellationRequested) {
             return;
         }
-        vscode.window.showErrorMessage(formatMessage('Error: {0}', error instanceof Error ? error.message : String(error)));
+        const errorMessage = getUserFriendlyErrorMessage(error);
+        vscode.window.showErrorMessage(errorMessage);
     }
 }
 

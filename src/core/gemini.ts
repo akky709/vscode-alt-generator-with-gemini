@@ -8,6 +8,7 @@ import { getDefaultPrompt, getCharConstraint } from './prompts';
 import { getOutputLanguage } from '../utils/config';
 import { CancellationError, NetworkError } from '../utils/errors';
 import { handleHttpError, handleContentBlocked, validateResponseStructure, isRetryableError } from '../utils/errorHandler';
+import { API_CONFIG, JSON_FORMATTING } from '../constants';
 
 /**
  * Generate ALT text for an image using Gemini API
@@ -84,15 +85,16 @@ export async function generateAltText(
             },
             body: JSON.stringify(requestBody)
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Network errors (connection failed, DNS errors, etc.)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new NetworkError(
             'Failed to connect to Gemini API.\n\n' +
             'Possible causes:\n' +
             '1. No internet connection\n' +
             '2. Network firewall blocking the request\n' +
             '3. DNS resolution failed\n\n' +
-            `Error details: ${error.message}`
+            `Error details: ${errorMessage}`
         );
     }
 
@@ -106,18 +108,25 @@ export async function generateAltText(
         await handleHttpError(response);
     }
 
-    const data: any = await response.json();
+    const data: unknown = await response.json();
 
     // Check for content blocked by safety filters
-    if (data.promptFeedback && data.promptFeedback.blockReason) {
-        console.error('API blocked the request:', JSON.stringify(data, null, 2));
-        handleContentBlocked(data.promptFeedback.blockReason, 'image');
+    // Type guard for promptFeedback
+    if (typeof data === 'object' && data !== null && 'promptFeedback' in data) {
+        const dataObj = data as { promptFeedback?: { blockReason?: string } };
+        if (dataObj.promptFeedback?.blockReason) {
+            console.error('API blocked the request:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
+            handleContentBlocked(dataObj.promptFeedback.blockReason, 'image');
+        }
     }
 
     // Validate response structure
     validateResponseStructure(data);
 
-    const altText = data.candidates[0].content.parts[0].text.trim();
+    // After validation, we can safely access the response properties
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const validatedData = data as any;
+    const altText = validatedData.candidates[0].content.parts[0].text.trim();
 
     return altText;
 }
@@ -179,15 +188,16 @@ export async function generateVideoAriaLabel(
             },
             body: JSON.stringify(requestBody)
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Network errors (connection failed, DNS errors, etc.)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         throw new NetworkError(
             'Failed to connect to Gemini API.\n\n' +
             'Possible causes:\n' +
             '1. No internet connection\n' +
             '2. Network firewall blocking the request\n' +
             '3. DNS resolution failed\n\n' +
-            `Error details: ${error.message}`
+            `Error details: ${errorMessage}`
         );
     }
 
@@ -201,18 +211,25 @@ export async function generateVideoAriaLabel(
         await handleHttpError(response);
     }
 
-    const data: any = await response.json();
+    const data: unknown = await response.json();
 
     // Check for content blocked by safety filters
-    if (data.promptFeedback && data.promptFeedback.blockReason) {
-        console.error('API blocked the request:', JSON.stringify(data, null, 2));
-        handleContentBlocked(data.promptFeedback.blockReason, 'video');
+    // Type guard for promptFeedback
+    if (typeof data === 'object' && data !== null && 'promptFeedback' in data) {
+        const dataObj = data as { promptFeedback?: { blockReason?: string } };
+        if (dataObj.promptFeedback?.blockReason) {
+            console.error('API blocked the request:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
+            handleContentBlocked(dataObj.promptFeedback.blockReason, 'video');
+        }
     }
 
     // Validate response structure
     validateResponseStructure(data);
 
-    const ariaLabel = data.candidates[0].content.parts[0].text.trim();
+    // After validation, we can safely access the response properties
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const validatedData = data as any;
+    const ariaLabel = validatedData.candidates[0].content.parts[0].text.trim();
 
     return ariaLabel;
 }
@@ -230,7 +247,7 @@ export async function generateAltTextWithRetry(
     model: string,
     token?: vscode.CancellationToken,
     surroundingText?: string,
-    maxRetries: number = 2
+    maxRetries: number = API_CONFIG.MAX_RETRIES
 ): Promise<string> {
     let lastError: Error | null = null;
 
@@ -250,8 +267,8 @@ export async function generateAltTextWithRetry(
                 token,
                 surroundingText
             );
-        } catch (error) {
-            lastError = error as Error;
+        } catch (error: unknown) {
+            lastError = error instanceof Error ? error : new Error('Unknown error');
 
             // キャンセルエラーは即座に投げる
             if (error instanceof CancellationError || token?.isCancellationRequested) {
@@ -268,8 +285,8 @@ export async function generateAltTextWithRetry(
                 throw error;
             }
 
-            // Short wait for network/server errors: 1秒, 2秒
-            const waitTime = 1000 * (attempt + 1);
+            // Short wait for network/server errors
+            const waitTime = API_CONFIG.RETRY_WAIT_BASE_MS * (attempt + 1);
             console.log(`[ALT Generator] Retrying after network/server error (attempt ${attempt + 1}/${maxRetries}, waiting ${waitTime}ms)`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
         }
@@ -290,7 +307,7 @@ export async function generateVideoAriaLabelWithRetry(
     model: string,
     token?: vscode.CancellationToken,
     surroundingText?: string,
-    maxRetries: number = 2
+    maxRetries: number = API_CONFIG.MAX_RETRIES
 ): Promise<string> {
     let lastError: Error | null = null;
 
@@ -309,8 +326,8 @@ export async function generateVideoAriaLabelWithRetry(
                 token,
                 surroundingText
             );
-        } catch (error) {
-            lastError = error as Error;
+        } catch (error: unknown) {
+            lastError = error instanceof Error ? error : new Error('Unknown error');
 
             // キャンセルエラーは即座に投げる
             if (error instanceof CancellationError || token?.isCancellationRequested) {
@@ -327,8 +344,8 @@ export async function generateVideoAriaLabelWithRetry(
                 throw error;
             }
 
-            // Short wait for network/server errors: 1秒, 2秒
-            const waitTime = 1000 * (attempt + 1);
+            // Short wait for network/server errors
+            const waitTime = API_CONFIG.RETRY_WAIT_BASE_MS * (attempt + 1);
             console.log(`[ALT Generator] Retrying after network/server error (attempt ${attempt + 1}/${maxRetries}, waiting ${waitTime}ms)`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
         }

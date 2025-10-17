@@ -3,11 +3,12 @@
  */
 
 import * as vscode from 'vscode';
+import { TEXT_PROCESSING } from '../constants';
 
 /**
  * Format a message with placeholders {0}, {1}, etc.
  */
-export function formatMessage(message: string, ...args: any[]): string {
+export function formatMessage(message: string, ...args: unknown[]): string {
     args.forEach((arg, index) => {
         message = message.replace(`{${index}}`, String(arg));
     });
@@ -33,7 +34,7 @@ export function findParentElement(
     fullText: string,
     imageStart: number,
     imageEnd: number,
-    maxSearch: number = 5000
+    maxSearch: number = TEXT_PROCESSING.MAX_SEARCH_RANGE
 ): { start: number; end: number; tagName: string } | null {
     // 画像位置から前後に検索（最大maxSearch文字まで）
     const searchStart = Math.max(0, imageStart - maxSearch);
@@ -96,7 +97,7 @@ export function findSiblingElements(
     fullText: string,
     imageStart: number,
     imageEnd: number,
-    maxSearch: number = 5000
+    maxSearch: number = TEXT_PROCESSING.MAX_SEARCH_RANGE
 ): Array<{ position: 'before' | 'after'; tagName: string; text: string }> {
     const siblings: Array<{ position: 'before' | 'after'; tagName: string; text: string }> = [];
 
@@ -134,7 +135,7 @@ export function findSiblingElements(
 
     // 画像に最も近い前の兄弟要素を最大3つ取得
     beforeMatches.sort((a, b) => b.end - a.end);
-    for (let i = 0; i < Math.min(3, beforeMatches.length); i++) {
+    for (let i = 0; i < Math.min(TEXT_PROCESSING.MAX_SIBLINGS, beforeMatches.length); i++) {
         const element = beforeMatches[i];
         const elementText = fullText.substring(element.start, element.end);
         const cleanedText = stripHtmlTags(elementText).trim();
@@ -170,7 +171,7 @@ export function findSiblingElements(
 
     // 画像に最も近い後の兄弟要素を最大3つ取得
     afterMatches.sort((a, b) => a.start - b.start);
-    for (let i = 0; i < Math.min(3, afterMatches.length); i++) {
+    for (let i = 0; i < Math.min(TEXT_PROCESSING.MAX_SIBLINGS, afterMatches.length); i++) {
         const element = afterMatches[i];
         const elementText = fullText.substring(element.start, element.end);
         const cleanedText = stripHtmlTags(elementText).trim();
@@ -202,7 +203,6 @@ export function extractSurroundingText(
     let currentImageStart = imageStart;
     let currentImageEnd = imageEnd;
     let level = 0;
-    const maxLevels = 3;
 
     // まず兄弟要素からテキストを収集
     const siblings = findSiblingElements(fullText, imageStart, imageEnd, contextRange);
@@ -211,8 +211,8 @@ export function extractSurroundingText(
         collectedTexts.push(`[Text in <${sibling.tagName}> sibling ${prefix} image]: ${sibling.text}`);
     }
 
-    // 最大3階層まで親要素をさかのぼる
-    while (level < maxLevels) {
+    // 最大階層まで親要素をさかのぼる
+    while (level < TEXT_PROCESSING.MAX_PARENT_LEVELS) {
         const parent = findParentElement(fullText, currentImageStart, currentImageEnd, contextRange);
 
         if (!parent) {
@@ -235,9 +235,9 @@ export function extractSurroundingText(
             collectedTexts.push(`[Text in <${parent.tagName}> parent after image]: ${cleanedAfter}`);
         }
 
-        // 十分なテキストが集まったら終了（最低50文字）
+        // 十分なテキストが集まったら終了
         const totalLength = cleanedBefore.length + cleanedAfter.length;
-        if (totalLength >= 50) {
+        if (totalLength >= TEXT_PROCESSING.MIN_CONTEXT_LENGTH) {
             break;
         }
 

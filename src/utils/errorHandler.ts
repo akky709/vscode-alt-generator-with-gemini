@@ -14,6 +14,7 @@ import {
     NetworkError,
     ResponseFormatError
 } from './errors';
+import { JSON_FORMATTING } from '../constants';
 
 /**
  * Parse HTTP error response and throw appropriate error
@@ -169,10 +170,20 @@ export function handleContentBlocked(blockReason: string, contentType: 'image' |
 /**
  * Validate API response structure
  */
-export function validateResponseStructure(data: any): void {
+export function validateResponseStructure(data: unknown): void {
+    // Type guard: check if data is an object
+    if (typeof data !== 'object' || data === null) {
+        console.error('Unexpected API response:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
+        throw new ResponseFormatError(
+            '❌ Invalid API response type\n\n' +
+            'Response is not an object.\n' +
+            'Check developer console for details.'
+        );
+    }
+
     // Check candidates array
-    if (!data.candidates || !Array.isArray(data.candidates) || data.candidates.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
+    if (!hasProperty(data, 'candidates') || !Array.isArray(data.candidates) || data.candidates.length === 0) {
+        console.error('Unexpected API response:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
         throw new ResponseFormatError(
             '❌ Unexpected API response format\n\n' +
             'Missing "candidates" array.\n' +
@@ -182,8 +193,10 @@ export function validateResponseStructure(data: any): void {
 
     // Check content structure
     const candidate = data.candidates[0];
-    if (!candidate.content || !candidate.content.parts || !Array.isArray(candidate.content.parts) || candidate.content.parts.length === 0) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
+    if (typeof candidate !== 'object' || candidate === null ||
+        !hasProperty(candidate, 'content') || typeof candidate.content !== 'object' || candidate.content === null ||
+        !hasProperty(candidate.content, 'parts') || !Array.isArray(candidate.content.parts) || candidate.content.parts.length === 0) {
+        console.error('Unexpected API response:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
         throw new ResponseFormatError(
             '❌ Invalid API response structure\n\n' +
             'Missing content or parts.\n' +
@@ -192,8 +205,9 @@ export function validateResponseStructure(data: any): void {
     }
 
     // Check if text is present
-    if (!candidate.content.parts[0].text) {
-        console.error('Unexpected API response:', JSON.stringify(data, null, 2));
+    const part = candidate.content.parts[0];
+    if (typeof part !== 'object' || part === null || !hasProperty(part, 'text') || !part.text) {
+        console.error('Unexpected API response:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
         throw new ResponseFormatError(
             '❌ Empty API response\n\n' +
             'No generated text returned.\n' +
@@ -205,7 +219,7 @@ export function validateResponseStructure(data: any): void {
 /**
  * Check if error is retryable
  */
-export function isRetryableError(error: any): boolean {
+export function isRetryableError(error: unknown): boolean {
     if (error instanceof GeminiError) {
         return error.isRetryable;
     }
@@ -220,15 +234,38 @@ export function isRetryableError(error: any): boolean {
 }
 
 /**
+ * Type guard for Error objects
+ */
+function isError(error: unknown): error is Error {
+    return error instanceof Error;
+}
+
+/**
+ * Type guard for objects with specific properties
+ */
+function hasProperty<T extends string>(error: unknown, prop: T): error is Record<T, unknown> {
+    return typeof error === 'object' && error !== null && prop in error;
+}
+
+/**
  * Get user-friendly error message
  */
-export function getUserFriendlyErrorMessage(error: any): string {
+export function getUserFriendlyErrorMessage(error: unknown): string {
+    // Handle GeminiError instances
     if (error instanceof GeminiError) {
         return error.message;
     }
 
+    // Handle standard Error instances
+    if (!isError(error)) {
+        return '❌ Unexpected error';
+    }
+
     // Handle fetch/network errors
-    if (error.name === 'FetchError' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+    if (
+        error.name === 'FetchError' ||
+        (hasProperty(error, 'code') && (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED'))
+    ) {
         return '🌐 Network error\n\n' +
             'Unable to connect to Gemini API.\n\n' +
             'Solution:\n' +
@@ -245,6 +282,6 @@ export function getUserFriendlyErrorMessage(error: any): string {
             '• Check connection speed';
     }
 
-    // Generic error
+    // Generic error with message
     return error.message || '❌ Unexpected error';
 }

@@ -3,6 +3,7 @@
  */
 
 import * as vscode from 'vscode';
+import { CONTEXT_RANGE_VALUES } from '../constants';
 
 /**
  * Get output language for ALT text generation
@@ -28,12 +29,5 @@ export function getContextRangeValue(): number {
     const config = vscode.workspace.getConfiguration('altGenGemini');
     const rangeSetting = config.get<string>('contextRange', 'standard');
 
-    const rangeMap: { [key: string]: number } = {
-        'narrow': 500,
-        'standard': 1500,
-        'wide': 3000,
-        'very-wide': 5000
-    };
-
-    return rangeMap[rangeSetting] || 1500;
+    return CONTEXT_RANGE_VALUES[rangeSetting as keyof typeof CONTEXT_RANGE_VALUES] || CONTEXT_RANGE_VALUES.default;
 }

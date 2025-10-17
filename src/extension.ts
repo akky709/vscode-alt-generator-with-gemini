@@ -14,9 +14,13 @@ import { detectTagType, detectAllTags, extractImageFileName, extractVideoFileNam
 import { getContextRangeValue } from './utils/config';
 import { getUserFriendlyErrorMessage } from './utils/errorHandler';
 import { CancellationError } from './utils/errors';
+import { createContextCache } from './utils/contextGrouping';
 
 // Services
 import { detectStaticFileDirectory } from './services/frameworkDetector';
+
+// Constants
+import { API_CONFIG, UI_MESSAGES, SPECIAL_KEYWORDS } from './constants';
 
 export async function activate(context: vscode.ExtensionContext) {
     // 起動時にAPIキーを伏せ字表示に変換
@@ -212,6 +216,12 @@ async function processMultipleTags(
         let successCount = 0;
         let failureCount = 0;
 
+        // Create context cache for optimization
+        const contextEnabled = config.get<boolean>('contextEnabled', true);
+        const contextRange = getContextRangeValue();
+        const allTags = [...imgTags, ...videoTags];
+        const contextCache = await createContextCache(editor.document, allTags, contextRange, contextEnabled);
+
         // imgタグを処理
         for (const tag of imgTags) {
             if (token.isCancellationRequested) {
@@ -223,14 +233,16 @@ async function processMultipleTags(
 
             // imgタグ処理中のメッセージ
             progress.report({
-                message: formatMessage('[IMG] {0}/{1} - {2}', processedCount + 1, totalCount, fileName),
+                message: formatMessage('{0} {1}/{2} - {3}', UI_MESSAGES.IMAGE_PREFIX, processedCount + 1, totalCount, fileName),
                 increment: (100 / totalCount)
             });
 
             const selection = new vscode.Selection(tag.range.start, tag.range.end);
 
             try {
-                const result = await processImgTag(context, editor, selection, token, undefined, processedCount, totalCount, insertionMode);
+                // Get cached surrounding text for optimization
+                const cachedContext = contextCache?.getSurroundingText(tag.range);
+                const result = await processImgTag(context, editor, selection, token, undefined, processedCount, totalCount, insertionMode, cachedContext);
 
                 // 成功/失敗をカウント
                 if (result && result.success !== false) {
@@ -282,14 +294,16 @@ async function processMultipleTags(
 
             // videoタグ処理中のメッセージ
             progress.report({
-                message: formatMessage('[VIDEO] {0}/{1} - {2}', processedCount + 1, totalCount, fileName),
+                message: formatMessage('{0} {1}/{2} - {3}', UI_MESSAGES.VIDEO_PREFIX, processedCount + 1, totalCount, fileName),
                 increment: (100 / totalCount)
             });
 
             const selection = new vscode.Selection(tag.range.start, tag.range.end);
 
             try {
-                const result = await processVideoTag(context, editor, selection, token);
+                // Get cached surrounding text for optimization
+                const cachedContext = contextCache?.getSurroundingText(tag.range);
+                const result = await processVideoTag(context, editor, selection, token, cachedContext);
 
                 // 成功/失敗をカウント
                 if (result && result.success !== false) {
@@ -418,7 +432,8 @@ async function processVideoTag(
     context: vscode.ExtensionContext,
     editor: vscode.TextEditor,
     selection: vscode.Selection,
-    token?: vscode.CancellationToken
+    token?: vscode.CancellationToken,
+    cachedSurroundingText?: string
 ): Promise<{newText: string, ariaLabel: string, success: boolean} | void> {
     const document = editor.document;
     const selectedText = document.getText(selection);
@@ -471,8 +486,8 @@ async function processVideoTag(
 
     const stats = fs.statSync(videoPath);
     const fileSizeMB = stats.size / (1024 * 1024);
-    if (fileSizeMB > 20) {
-        vscode.window.showErrorMessage(formatMessage('❌ Video too large ({0}MB). Max 20MB.', fileSizeMB.toFixed(2)));
+    if (fileSizeMB > API_CONFIG.MAX_VIDEO_SIZE_MB) {
+        vscode.window.showErrorMessage(formatMessage('❌ Video too large ({0}MB). Max {1}MB.', fileSizeMB.toFixed(2), API_CONFIG.MAX_VIDEO_SIZE_MB));
         return;
     }
 
@@ -482,7 +497,7 @@ async function processVideoTag(
 
     const apiKey = await getApiKey(context);
     const config = vscode.workspace.getConfiguration('altGenGemini');
-    const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
+    const geminiModel = config.get<string>('geminiApiModel', API_CONFIG.DEFAULT_MODEL);
     const insertionMode = config.get<string>('insertionMode', 'auto');
 
     if (!apiKey) {
@@ -494,23 +509,29 @@ async function processVideoTag(
         return;
     }
 
-    // 周辺テキストを取得（設定が有効な場合）
+    // 周辺テキストを取得（キャッシュされている場合はそれを使用、そうでなければ抽出）
     let surroundingText: string | undefined;
-    const contextEnabled = config.get<boolean>('contextEnabled', true);
-    const contextRange = getContextRangeValue();
+    if (cachedSurroundingText !== undefined) {
+        // Use cached surrounding text for batch processing optimization
+        surroundingText = cachedSurroundingText;
+    } else {
+        // Extract surrounding text if not cached
+        const contextEnabled = config.get<boolean>('contextEnabled', true);
+        const contextRange = getContextRangeValue();
 
-    if (contextEnabled) {
-        surroundingText = extractSurroundingText(editor.document, selection, contextRange);
+        if (contextEnabled) {
+            surroundingText = extractSurroundingText(editor.document, selection, contextRange);
+        }
     }
 
-    const ariaLabel = await generateVideoAriaLabelWithRetry(apiKey, base64Video, mimeType, geminiModel, token, surroundingText, 2);
+    const ariaLabel = await generateVideoAriaLabelWithRetry(apiKey, base64Video, mimeType, geminiModel, token, surroundingText, API_CONFIG.MAX_RETRIES);
 
     if (token?.isCancellationRequested) {
         return;
     }
 
     // "DECORATIVE"判定の場合はaria-labelを追加しない
-    if (ariaLabel.trim() === 'DECORATIVE') {
+    if (ariaLabel.trim() === SPECIAL_KEYWORDS.DECORATIVE) {
         if (insertionMode === 'auto') {
             vscode.window.showInformationMessage('📝 aria-label: Already described by surrounding text (not added)');
         }
@@ -646,7 +667,7 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
         // Gemini APIキーとモデル設定を取得
         const apiKey = await getApiKey(context);
         const config = vscode.workspace.getConfiguration('altGenGemini');
-        const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
+        const geminiModel = config.get<string>('geminiApiModel', API_CONFIG.DEFAULT_MODEL);
 
         if (!apiKey) {
             vscode.window.showErrorMessage('🔑 API key not configured');
@@ -675,7 +696,7 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
                     surroundingText = extractSurroundingText(document, actualSelection, contextRange);
                 }
 
-                const ariaLabel = await generateVideoAriaLabelWithRetry(apiKey, base64Video, mimeType, geminiModel, token, surroundingText, 2);
+                const ariaLabel = await generateVideoAriaLabelWithRetry(apiKey, base64Video, mimeType, geminiModel, token, surroundingText, API_CONFIG.MAX_RETRIES);
 
                 // キャンセルチェック
                 if (token.isCancellationRequested) {
@@ -684,7 +705,7 @@ async function generateAriaLabelForVideo(context: vscode.ExtensionContext, edito
                 }
 
                 // "DECORATIVE"判定の場合はaria-labelを追加しない
-                if (ariaLabel.trim() === 'DECORATIVE') {
+                if (ariaLabel.trim() === SPECIAL_KEYWORDS.DECORATIVE) {
                     vscode.window.showInformationMessage('📝 aria-label: Already described by surrounding text (not added)');
                     return;
                 }
@@ -729,7 +750,8 @@ async function processImgTag(
     progress?: vscode.Progress<{message?: string; increment?: number}>,
     processedCount?: number,
     totalCount?: number,
-    insertionMode?: string
+    insertionMode?: string,
+    cachedSurroundingText?: string
 ): Promise<{selection: vscode.Selection, altText: string, newText: string, actualSelection: vscode.Selection, success: boolean} | void> {
     const document = editor.document;
     let selectedText = document.getText(selection);
@@ -820,7 +842,7 @@ async function processImgTag(
     if (progress && typeof processedCount === 'number' && typeof totalCount === 'number') {
         const message = totalCount === 1
             ? imageFileName
-            : formatMessage('[IMG] {0}/{1} - {2}', processedCount + 1, totalCount, imageFileName);
+            : formatMessage('{0} {1}/{2} - {3}', UI_MESSAGES.IMAGE_PREFIX, processedCount + 1, totalCount, imageFileName);
         progress.report({
             message,
             increment: (100 / totalCount)
@@ -944,20 +966,26 @@ async function processImgTag(
     // Gemini APIキー、生成モード、モデル設定を取得
     const apiKey = await getApiKey(context);
     const generationMode = config.get<string>('generationMode', 'SEO');
-    const geminiModel = config.get<string>('geminiApiModel', 'gemini-2.5-flash');
+    const geminiModel = config.get<string>('geminiApiModel', API_CONFIG.DEFAULT_MODEL);
 
     if (!apiKey) {
         vscode.window.showErrorMessage('🔑 API key not configured');
         return;
     }
 
-    // 周辺テキストを取得（設定が有効な場合）
+    // 周辺テキストを取得（キャッシュされている場合はそれを使用、そうでなければ抽出）
     let surroundingText: string | undefined;
-    const contextEnabled = config.get<boolean>('contextEnabled', true);
-    const contextRange = getContextRangeValue();
+    if (cachedSurroundingText !== undefined) {
+        // Use cached surrounding text for batch processing optimization
+        surroundingText = cachedSurroundingText;
+    } else {
+        // Extract surrounding text if not cached
+        const contextEnabled = config.get<boolean>('contextEnabled', true);
+        const contextRange = getContextRangeValue();
 
-    if (contextEnabled) {
-        surroundingText = extractSurroundingText(document, actualSelection, contextRange);
+        if (contextEnabled) {
+            surroundingText = extractSurroundingText(document, actualSelection, contextRange);
+        }
     }
 
     // Gemini APIを呼び出してALTテキストを生成
@@ -967,7 +995,7 @@ async function processImgTag(
             return;
         }
 
-        const altText = await generateAltTextWithRetry(apiKey, base64Image, mimeType, generationMode, geminiModel, token, surroundingText, 2);
+        const altText = await generateAltTextWithRetry(apiKey, base64Image, mimeType, generationMode, geminiModel, token, surroundingText, API_CONFIG.MAX_RETRIES);
 
         // キャンセルチェック
         if (token?.isCancellationRequested) {
@@ -975,7 +1003,7 @@ async function processImgTag(
         }
 
         // "DECORATIVE"判定の場合は空のALTを設定
-        if (altText.trim() === 'DECORATIVE') {
+        if (altText.trim() === SPECIAL_KEYWORDS.DECORATIVE) {
             const hasAlt = /alt=["'{][^"'}]*["'}]/.test(selectedText);
             let newText: string;
             if (hasAlt) {

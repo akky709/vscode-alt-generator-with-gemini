@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { CHAR_CONSTRAINTS, PROMPT_CONSTRAINTS } from '../constants';
 
 // Custom prompts interface
 interface CustomPrompts {
@@ -49,7 +50,7 @@ ${surroundingText}
 [IMPORTANT - AVOID REDUNDANCY]
 - Carefully read the text from both sibling elements (before/after the image) and parent elements.
 - If the surrounding text already fully describes the image content, return "DECORATIVE" (without quotes) to indicate that alt="" should be used ${avoidReason}.
-- If the surrounding text partially describes the image, provide only a brief supplementary description (maximum 50 characters) that adds ${purpose} not mentioned in the text.
+- If the surrounding text partially describes the image, provide only a brief supplementary description (maximum ${PROMPT_CONSTRAINTS.MAX_SUPPLEMENTARY_CHARS} characters) that adds ${purpose} not mentioned in the text.
 - If the surrounding text does not describe the image at all, provide a complete description following the standard constraints below.
 `;
 }
@@ -62,7 +63,7 @@ export const DEFAULT_PROMPTS = {
             return `You are an SEO expert. Analyze the provided image and generate the most effective single-sentence ALT text for SEO purposes.${contextInstruction}
 
 [CONSTRAINTS]
-1. Include 3-5 key search terms naturally.
+1. Include ${PROMPT_CONSTRAINTS.SEO_KEYWORDS_MIN}-${PROMPT_CONSTRAINTS.SEO_KEYWORDS_MAX} key search terms naturally.
 2. The description must be a single, concise sentence.
 3. Avoid unnecessary phrases like "image of" or "photo of" at the end.
 4. Do not include any information unrelated to the image.
@@ -76,7 +77,7 @@ Return only the generated ALT text, without any further conversation or explanat
             return `You are an SEO expert. Analyze the provided image and generate the most effective single-sentence ALT text for SEO purposes.${contextInstruction}
 
 [CONSTRAINTS]
-1. Include 3-5 key search terms naturally.
+1. Include ${PROMPT_CONSTRAINTS.SEO_KEYWORDS_MIN}-${PROMPT_CONSTRAINTS.SEO_KEYWORDS_MAX} key search terms naturally.
 2. The description must be a single, concise sentence.
 3. Avoid unnecessary phrases like "image of" or "photo of" at the end.
 4. Do not include any information unrelated to the image.
@@ -162,14 +163,14 @@ ${surroundingText}
 [IMPORTANT - AVOID REDUNDANCY]
 - Carefully read the text from both sibling elements (before/after the video) and parent elements.
 - If the surrounding text already fully describes the video's purpose or function, return "DECORATIVE" (without quotes) to indicate that aria-label should NOT be added (avoiding double reading by screen readers).
-- If the surrounding text partially describes the video, provide only a brief supplementary phrase (maximum 5 words) that adds information not mentioned in the text.
+- If the surrounding text partially describes the video, provide only a brief supplementary phrase (maximum ${PROMPT_CONSTRAINTS.MAX_SUPPLEMENTARY_WORDS_VIDEO} words) that adds information not mentioned in the text.
 - If the surrounding text does not describe the video at all, provide a complete description following the standard constraints below.
 ` : '';
 
             return `You are a Web Accessibility and UX expert. Analyze the provided video content in detail and identify the role it plays within the page's context. Your task is to generate the optimal ARIA-LABEL text that briefly explains the video's purpose or function.${contextInstruction}
 
 [CONSTRAINTS]
-1. The generated ARIA-LABEL text must be a very short phrase, **no more than 10 words**.
+1. The generated ARIA-LABEL text must be a very short phrase, **no more than ${PROMPT_CONSTRAINTS.MAX_VIDEO_ARIA_LABEL_WORDS} words**.
 2. Focus on the video's **purpose or function**, not its **content or visual description**. (e.g., product demo, operation tutorial, background animation, etc.)
 3. Prioritize conciseness and use common language that will be easily understood by the user.
 4. Do not include the words "video," "movie," or "clip".
@@ -188,14 +189,14 @@ ${surroundingText}
 [IMPORTANT - AVOID REDUNDANCY]
 - Carefully read the text from both sibling elements (before/after the video) and parent elements.
 - If the surrounding text already fully describes the video's purpose or function, return "DECORATIVE" (without quotes) to indicate that aria-label should NOT be added (avoiding double reading by screen readers).
-- If the surrounding text partially describes the video, provide only a brief supplementary phrase (maximum 5 words) that adds information not mentioned in the text.
+- If the surrounding text partially describes the video, provide only a brief supplementary phrase (maximum ${PROMPT_CONSTRAINTS.MAX_SUPPLEMENTARY_WORDS_VIDEO} words) that adds information not mentioned in the text.
 - If the surrounding text does not describe the video at all, provide a complete description following the standard constraints below.
 ` : '';
 
             return `You are a Web Accessibility and UX expert. Analyze the provided video content in detail and identify the role it plays within the page's context. Your task is to generate the optimal ARIA-LABEL text that briefly explains the video's purpose or function.${contextInstruction}
 
 [CONSTRAINTS]
-1. The generated ARIA-LABEL text must be a very short phrase, **no more than 10 words**.
+1. The generated ARIA-LABEL text must be a very short phrase, **no more than ${PROMPT_CONSTRAINTS.MAX_VIDEO_ARIA_LABEL_WORDS} words**.
 2. Focus on the video's **purpose or function**, not its **content or visual description**. (e.g., product demo, operation tutorial, background animation, etc.)
 3. Prioritize conciseness and use common language that will be easily understood by the user.
 4. Do not include the words "video," "movie," or "clip".
@@ -257,7 +258,7 @@ export function getDefaultPrompt(
 
     if (type === 'a11y') {
         const mode = options?.mode || 'standard';
-        const charConstraint = options?.charConstraint || '50 and 120 characters';
+        const charConstraint = options?.charConstraint || CHAR_CONSTRAINTS.DEFAULT;
 
         // Check if custom prompt exists
         const customPrompt = customPrompts?.a11y?.[mode]?.[lang];
@@ -288,15 +289,15 @@ export function getDefaultPrompt(
 export function getCharConstraint(lang: 'en' | 'ja', descriptionLength: 'standard' | 'detailed'): string {
     if (lang === 'ja') {
         if (descriptionLength === 'detailed') {
-            return '100 and 200 Japanese characters (full-width characters)';
+            return CHAR_CONSTRAINTS.DETAILED_JA;
         } else {
-            return '50 and 120 Japanese characters (full-width characters)';
+            return CHAR_CONSTRAINTS.STANDARD_JA;
         }
     } else {
         if (descriptionLength === 'detailed') {
-            return '100 and 200 characters';
+            return CHAR_CONSTRAINTS.DETAILED_EN;
         } else {
-            return '60 and 130 characters';
+            return CHAR_CONSTRAINTS.STANDARD_EN;
         }
     }
 }

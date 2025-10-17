@@ -4,6 +4,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { TAG_DETECTION } from '../constants';
 
 /**
  * Detect tag type at cursor position
@@ -58,13 +59,12 @@ export function detectAllTags(
     }
 
     // imgとImageタグを検出（属性長を制限してReDoS対策）
-    const imgRegex = /<(img|Image)\s[^>]{0,1000}>/gi;
+    const imgRegex = new RegExp(`<(img|Image)\\s[^>]{0,${TAG_DETECTION.MAX_ATTRIBUTE_LENGTH}}>`, 'gi');
     let match;
     const startTime = Date.now();
-    const timeout = 5000; // 5秒タイムアウト
 
     while ((match = imgRegex.exec(selectedText)) !== null) {
-        if (Date.now() - startTime > timeout) {
+        if (Date.now() - startTime > TAG_DETECTION.SEARCH_TIMEOUT_MS) {
             vscode.window.showWarningMessage('Tag detection timeout - text may be too complex');
             break;
         }
@@ -80,7 +80,7 @@ export function detectAllTags(
     // videoタグを検出（より安全な2パスアプローチ）
     const videoOpenRegex = /<video\s[^>]{0,500}>/gi;
     while ((match = videoOpenRegex.exec(selectedText)) !== null) {
-        if (Date.now() - startTime > timeout) {
+        if (Date.now() - startTime > TAG_DETECTION.SEARCH_TIMEOUT_MS) {
             vscode.window.showWarningMessage('Tag detection timeout - text may be too complex');
             break;
         }

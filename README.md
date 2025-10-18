@@ -29,7 +29,16 @@ This is an alternative way to convey titles or brief functions to assistive tech
 
 ### 🎯 Smart Features
 - **Decorative Image Detection**: Automatically identifies decorative images by filename keywords (e.g., `icon-`, `bg-`)
+- **Context-Aware Generation**: Analyzes surrounding text to generate more accurate descriptions
+- **Batch Processing Optimization**: Efficiently processes multiple tags with memory-efficient chunking
 - **Cancel Support**: Stop processing anytime during batch operations
+
+### 🔒 Security & Performance
+- **Secure API Key Storage**: API keys are encrypted using VSCode's Secrets API
+- **ReDoS Protection**: Regex patterns optimized to prevent catastrophic backtracking attacks
+- **Memory Efficient**: Processes large batches in chunks (10 items per chunk) to minimize memory usage
+- **Document Caching**: Smart caching reduces redundant DOM parsing during batch operations
+- **Type-Safe API Responses**: Fully typed Gemini API response handling prevents runtime errors
 
 ## Supported Files
 
@@ -108,8 +117,10 @@ Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
 **Optional:**
 - **Gemini API Model**: Choose from Pro 2.5 (most advanced), Flash 2.5 (fast & intelligent, recommended), or Flash-Lite 2.5 (ultra-fast)
 - **Generation Mode**: SEO or A11Y
-- **Insertion Mode**: Auto (insert immediately) or Manual (review before insertion)
+- **Insertion Mode**: Auto (insert immediately) or Confirm (review before insertion)
 - **Output Language**: Auto, Japanese, or English
+- **Context Enabled**: Enable/disable surrounding text analysis (default: enabled)
+- **Context Range**: How much surrounding text to analyze - Narrow (500 chars), Standard (1500 chars), Wide (3000 chars), or Very Wide (5000 chars)
 - **Decorative Keywords**: Customize keywords for decorative image detection
 
 Or edit `settings.json`:
@@ -120,9 +131,17 @@ Or edit `settings.json`:
   "altGenGemini.generationMode": "SEO",
   "altGenGemini.insertionMode": "auto",
   "altGenGemini.outputLanguage": "auto",
+  "altGenGemini.contextEnabled": true,
+  "altGenGemini.contextRange": "standard",
   "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"]
 }
 ```
+
+**🔐 API Key Security Note:**
+After entering your API key in settings, it will be automatically:
+- Encrypted and stored in VSCode's secure storage (Secrets API)
+- Masked in the settings UI (displayed as `••••••••xxxx`)
+- Never stored in plain text in `settings.json`
 
 ## Usage
 
@@ -193,9 +212,38 @@ Customize keywords in settings to match your project's naming conventions.
 - The API's safety policies cannot be overridden
 - If an image is blocked, you'll need to manually write the alt text or use a different image
 
+### Slow Performance with Large Files
+- **Reduce Context Range**: Switch from "Very Wide" to "Standard" or "Narrow"
+- **Disable Context**: Turn off context analysis for faster processing
+- **Process in Smaller Batches**: Select fewer tags at once
+- **Check File Size**: Large HTML files (>500KB) may slow down parsing
+
+### Memory Issues
+- The extension automatically processes batches in chunks of 10 items
+- If you still experience issues, try processing fewer items at once
+- Close other resource-intensive applications
+
 ## API Limits
 
 The extension automatically manages API rate limits. For details about Gemini API limits and pricing, see the [official documentation](https://ai.google.dev/gemini-api/docs/quota).
+
+## Performance & Best Practices
+
+### Batch Processing
+- **Chunk Size**: Large batches are automatically processed in chunks of 10 items
+- **Memory Management**: Cache is cleared after each chunk to prevent memory buildup
+- **Context Optimization**: Nearby tags share context extraction, reducing API calls
+
+### Context-Aware Generation
+When **Context Enabled** is on, the extension analyzes surrounding HTML elements to generate more accurate descriptions:
+- Considers text in parent elements (div, section, article, etc.)
+- Analyzes sibling elements before and after the image
+- Intelligently detects redundant descriptions (returns `alt=""` when context already describes the image)
+
+### Recommended Settings
+- **For best accuracy**: Context Range = "Wide" or "Very Wide"
+- **For faster processing**: Context Range = "Narrow" or disable context
+- **For large batches**: Use "Confirm" insertion mode to review before applying
 
 ## Notes
 
@@ -203,6 +251,7 @@ The extension automatically manages API rate limits. For details about Gemini AP
 - Video files: Recommended 10MB or less (max 20MB)
 - Processing time depends on number of images and API model
 - Free tier has usage limits - see Gemini API documentation
+- API keys are securely stored and never transmitted except to Google's Gemini API
 
 ## License
 

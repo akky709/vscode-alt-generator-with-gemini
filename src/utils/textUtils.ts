@@ -5,6 +5,44 @@
 import * as vscode from 'vscode';
 import { TEXT_PROCESSING } from '../constants';
 
+// Pre-compiled regex patterns for performance optimization
+const SCRIPT_TAG_REGEX = /<script[\s\S]*?<\/script>/gi;
+const STYLE_TAG_REGEX = /<style[\s\S]*?<\/style>/gi;
+const HTML_TAG_REGEX = /<[^>]{1,500}>/g;
+const WHITESPACE_REGEX = /\s+/g;
+
+/**
+ * Document cache interface for storing parsed document data
+ */
+interface CachedDocument {
+    fullText: string;
+    version: number; // Document version for cache invalidation
+}
+
+/**
+ * Document cache using WeakMap for automatic garbage collection
+ * Caches document.getText() results to avoid redundant DOM parsing
+ */
+const documentCache = new WeakMap<vscode.TextDocument, CachedDocument>();
+
+/**
+ * Get cached document text or parse and cache it
+ */
+function getCachedDocumentText(document: vscode.TextDocument): string {
+    let cache = documentCache.get(document);
+
+    // Cache miss or document version changed (invalidate cache)
+    if (!cache || cache.version !== document.version) {
+        cache = {
+            fullText: document.getText(),
+            version: document.version
+        };
+        documentCache.set(document, cache);
+    }
+
+    return cache.fullText;
+}
+
 /**
  * Format a message with placeholders {0}, {1}, etc.
  */
@@ -17,13 +55,24 @@ export function formatMessage(message: string, ...args: unknown[]): string {
 
 /**
  * Strip HTML tags from text and return clean text content
+ * Uses safer regex patterns to prevent ReDoS attacks
+ * Uses pre-compiled regex for performance
  */
 export function stripHtmlTags(text: string): string {
+    // Limit text length to prevent ReDoS attacks
+    if (text.length > TEXT_PROCESSING.MAX_TEXT_LENGTH) {
+        text = text.substring(0, TEXT_PROCESSING.MAX_TEXT_LENGTH);
+    }
+
     return text
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ') // scriptタグとその内容を削除
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ') // styleタグとその内容を削除
-        .replace(/<[^>]+>/g, ' ') // その他のHTMLタグを削除
-        .replace(/\s+/g, ' ') // 連続する空白を1つにまとめる
+        // Remove script tags and content (non-greedy, simpler pattern)
+        .replace(SCRIPT_TAG_REGEX, ' ')
+        // Remove style tags and content (non-greedy, simpler pattern)
+        .replace(STYLE_TAG_REGEX, ' ')
+        // Remove other HTML tags with length limit to prevent catastrophic backtracking
+        .replace(HTML_TAG_REGEX, ' ')
+        // Collapse multiple whitespace into single space
+        .replace(WHITESPACE_REGEX, ' ')
         .trim();
 }
 
@@ -189,13 +238,15 @@ export function findSiblingElements(
 
 /**
  * Extract surrounding text context for the image using structural approach
+ * Uses document cache to avoid redundant DOM parsing
  */
 export function extractSurroundingText(
     document: vscode.TextDocument,
     tagRange: vscode.Range,
     contextRange: number
 ): string {
-    const fullText = document.getText();
+    // Use cached document text for performance
+    const fullText = getCachedDocumentText(document);
     const imageStart = document.offsetAt(tagRange.start);
     const imageEnd = document.offsetAt(tagRange.end);
 

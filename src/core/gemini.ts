@@ -11,6 +11,23 @@ import { handleHttpError, handleContentBlocked, validateResponseStructure, isRet
 import { API_CONFIG, JSON_FORMATTING } from '../constants';
 
 /**
+ * Gemini API response structure
+ * Defines the expected JSON structure from Gemini API generateContent endpoint
+ */
+interface GeminiResponse {
+    candidates: Array<{
+        content: {
+            parts: Array<{
+                text: string;
+            }>;
+        };
+    }>;
+    promptFeedback?: {
+        blockReason?: string;
+    };
+}
+
+/**
  * Generate ALT text for an image using Gemini API
  */
 export async function generateAltText(
@@ -123,9 +140,8 @@ export async function generateAltText(
     // Validate response structure
     validateResponseStructure(data);
 
-    // After validation, we can safely access the response properties
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const validatedData = data as any;
+    // After validation, we can safely access the response properties with proper typing
+    const validatedData = data as GeminiResponse;
     const altText = validatedData.candidates[0].content.parts[0].text.trim();
 
     return altText;
@@ -226,9 +242,8 @@ export async function generateVideoAriaLabel(
     // Validate response structure
     validateResponseStructure(data);
 
-    // After validation, we can safely access the response properties
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const validatedData = data as any;
+    // After validation, we can safely access the response properties with proper typing
+    const validatedData = data as GeminiResponse;
     const ariaLabel = validatedData.candidates[0].content.parts[0].text.trim();
 
     return ariaLabel;

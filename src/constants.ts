@@ -29,6 +29,10 @@ export const TEXT_PROCESSING = {
     MAX_SIBLINGS: 3,
     /** Minimum text length in characters to consider context sufficient */
     MIN_CONTEXT_LENGTH: 50,
+    /** Maximum text length to prevent ReDoS attacks (500KB) */
+    MAX_TEXT_LENGTH: 500000,
+    /** Maximum HTML tag length to prevent ReDoS attacks */
+    MAX_TAG_LENGTH: 500,
 } as const;
 
 /**
@@ -123,4 +127,24 @@ export const CONTEXT_RANGE_VALUES = {
 export const SPECIAL_KEYWORDS = {
     /** Keyword returned by API to indicate decorative/redundant content */
     DECORATIVE: 'DECORATIVE',
+} as const;
+
+/**
+ * API Key Masking Configuration
+ */
+export const MASKING = {
+    /** Masked character for API key display */
+    MASK_CHAR: '••••••••',
+    /** Number of characters to show from end of API key (0 for maximum security) */
+    VISIBLE_CHARS: 4,
+    /** Minimum API key length to show last characters */
+    MIN_LENGTH_FOR_VISIBLE: 4,
+} as const;
+
+/**
+ * Batch Processing Configuration
+ */
+export const BATCH_PROCESSING = {
+    /** Number of items to process in each chunk for memory efficiency */
+    CHUNK_SIZE: 10,
 } as const;

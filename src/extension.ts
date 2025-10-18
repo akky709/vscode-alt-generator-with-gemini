@@ -14,7 +14,7 @@ import { processSingleImageTag } from './services/imageProcessor';
 import { processSingleVideoTag } from './services/videoProcessor';
 
 // Constants
-import { UI_MESSAGES, SELECTION_THRESHOLDS } from './constants';
+import { UI_MESSAGES, SELECTION_THRESHOLDS, MASKING, BATCH_PROCESSING } from './constants';
 
 export async function activate(context: vscode.ExtensionContext) {
     // Mask API key on startup
@@ -150,9 +150,9 @@ async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<voi
     await context.secrets.store('altGenGemini.geminiApiKey', displayedKey);
 
     // Display with mask (fixed-length mask for better security)
-    const maskedKey = displayedKey.length > 4
-        ? '••••••••' + displayedKey.substring(displayedKey.length - 4)
-        : '••••••••';
+    const maskedKey = displayedKey.length > MASKING.MIN_LENGTH_FOR_VISIBLE
+        ? MASKING.MASK_CHAR + displayedKey.substring(displayedKey.length - MASKING.VISIBLE_CHARS)
+        : MASKING.MASK_CHAR;
 
     await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
     await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
@@ -188,9 +188,9 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
         await context.secrets.store('altGenGemini.geminiApiKey', displayedKey);
 
         // Convert to masked display (fixed-length mask for better security)
-        const maskedKey = displayedKey.length > 4
-            ? '••••••••' + displayedKey.substring(displayedKey.length - 4)
-            : '••••••••';
+        const maskedKey = displayedKey.length > MASKING.MIN_LENGTH_FOR_VISIBLE
+            ? MASKING.MASK_CHAR + displayedKey.substring(displayedKey.length - MASKING.VISIBLE_CHARS)
+            : MASKING.MASK_CHAR;
 
         // console.log('[ALT Generator] Masked key:', maskedKey);
 
@@ -226,133 +226,117 @@ async function processMultipleTags(
         let successCount = 0;
         let failureCount = 0;
 
-        // Create context cache for optimization
+        // Combine all tags for chunk processing
         const allTags = [...imgTags, ...videoTags];
-        const contextCache = await createContextCache(editor.document, allTags, contextRange, contextEnabled);
 
-        // Process img tags
-        for (const tag of imgTags) {
-            if (token.isCancellationRequested) {
-                vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount, totalCount));
-                return;
-            }
+        // Process in chunks for memory efficiency
+        for (let i = 0; i < allTags.length; i += BATCH_PROCESSING.CHUNK_SIZE) {
+            const chunk = allTags.slice(i, i + BATCH_PROCESSING.CHUNK_SIZE);
 
-            const fileName = extractImageFileName(tag.text);
+            // Create context cache for this chunk only
+            const contextCache = await createContextCache(editor.document, chunk, contextRange, contextEnabled);
 
-            // Progress message for img tag processing
-            progress.report({
-                message: formatMessage('{0} {1}/{2} - {3}', UI_MESSAGES.IMAGE_PREFIX, processedCount + 1, totalCount, fileName),
-                increment: (100 / totalCount)
-            });
-
-            const selection = new vscode.Selection(tag.range.start, tag.range.end);
-
-            try {
-                // Get cached surrounding text for optimization
-                const cachedContext = contextCache?.getSurroundingText(tag.range);
-                const result = await processSingleImageTag(context, editor, selection, token, undefined, processedCount, totalCount, insertionMode, cachedContext);
-
-                // Count success/failure
-                if (result && result.success !== false) {
-                    successCount++;
-                } else if (!result) {
-                    // Void returned (error or cancellation)
-                    failureCount++;
+            // Process each tag in the chunk
+            for (const tag of chunk) {
+                if (token.isCancellationRequested) {
+                    vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount, totalCount));
+                    return;
                 }
 
-                if (result) {
-                    if (insertionMode === 'confirm') {
-                    // Show individual confirmation dialog
-                    const choice = await vscode.window.showInformationMessage(
-                        `✅ ALT: ${result.altText}\n\nInsert this ALT?`,
-                        'Insert',
-                        'Skip',
-                        'Cancel'
-                    );
+                const isImageTag = tag.type === 'img';
+                const fileName = isImageTag ? extractImageFileName(tag.text) : extractVideoFileName(tag.text);
 
-                    if (choice === 'Insert') {
-                        const success = await safeEditDocument(editor, result.actualSelection, result.newText);
-                        if (!success) {
-                            return;
+                // Progress message
+                progress.report({
+                    message: formatMessage('{0} {1}/{2} - {3}',
+                        isImageTag ? UI_MESSAGES.IMAGE_PREFIX : UI_MESSAGES.VIDEO_PREFIX,
+                        processedCount + 1,
+                        totalCount,
+                        fileName),
+                    increment: (100 / totalCount)
+                });
+
+                const selection = new vscode.Selection(tag.range.start, tag.range.end);
+
+                try {
+                    // Get cached surrounding text for optimization
+                    const cachedContext = contextCache?.getSurroundingText(tag.range);
+
+                    // Process based on tag type
+                    if (isImageTag) {
+                        const result = await processSingleImageTag(context, editor, selection, token, undefined, processedCount, totalCount, insertionMode, cachedContext);
+
+                        // Count success/failure
+                        if (result && result.success !== false) {
+                            successCount++;
+                        } else if (!result) {
+                            failureCount++;
                         }
-                    } else if (choice === 'Cancel') {
-                        vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
-                        return;
-                    }
-                    // If 'Skip', continue to next
-                }
-                }
-            } catch (error) {
-                // Increment failure count on error
-                failureCount++;
-                // Error already displayed in processSingleImageTag, ignore here
-            }
 
-            processedCount++;
-        }
+                        if (result && insertionMode === 'confirm') {
+                            // Show individual confirmation dialog
+                            const choice = await vscode.window.showInformationMessage(
+                                `✅ ALT: ${result.altText}\n\nInsert this ALT?`,
+                                'Insert',
+                                'Skip',
+                                'Cancel'
+                            );
 
-        // Process video tags
-        for (const tag of videoTags) {
-            if (token.isCancellationRequested) {
-                vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount, totalCount));
-                return;
-            }
-
-            const fileName = extractVideoFileName(tag.text);
-
-            // Progress message for video tag processing
-            progress.report({
-                message: formatMessage('{0} {1}/{2} - {3}', UI_MESSAGES.VIDEO_PREFIX, processedCount + 1, totalCount, fileName),
-                increment: (100 / totalCount)
-            });
-
-            const selection = new vscode.Selection(tag.range.start, tag.range.end);
-
-            try {
-                // Get cached surrounding text for optimization
-                const cachedContext = contextCache?.getSurroundingText(tag.range);
-                const result = await processSingleVideoTag(context, editor, selection, token, insertionMode, cachedContext);
-
-                // Count success/failure
-                if (result && result.success !== false) {
-                    successCount++;
-                } else if (!result) {
-                    // Void returned (error or cancellation)
-                    failureCount++;
-                }
-
-                if (result && insertionMode === 'confirm') {
-                    // For DECORATIVE case (no aria-label added), skip confirmation dialog
-                    if (result.ariaLabel.includes('not added')) {
-                        // Continue to next
-                    } else {
-                        // Show individual confirmation dialog
-                        const choice = await vscode.window.showInformationMessage(
-                            `✅ aria-label: ${result.ariaLabel}\n\nInsert this aria-label?`,
-                            'Insert',
-                            'Skip',
-                            'Cancel'
-                        );
-
-                        if (choice === 'Insert') {
-                            const success = await safeEditDocument(editor, selection, result.newText);
-                            if (!success) {
+                            if (choice === 'Insert') {
+                                const success = await safeEditDocument(editor, result.actualSelection, result.newText);
+                                if (!success) {
+                                    return;
+                                }
+                            } else if (choice === 'Cancel') {
+                                vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
                                 return;
                             }
-                        } else if (choice === 'Cancel') {
-                            vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
-                            return;
                         }
-                        // If 'Skip', continue to next
+                    } else {
+                        // Video tag processing
+                        const result = await processSingleVideoTag(context, editor, selection, token, insertionMode, cachedContext);
+
+                        // Count success/failure
+                        if (result && result.success !== false) {
+                            successCount++;
+                        } else if (!result) {
+                            failureCount++;
+                        }
+
+                        if (result && insertionMode === 'confirm') {
+                            // For DECORATIVE case (no aria-label added), skip confirmation dialog
+                            if (!result.ariaLabel.includes('not added')) {
+                                // Show individual confirmation dialog
+                                const choice = await vscode.window.showInformationMessage(
+                                    `✅ aria-label: ${result.ariaLabel}\n\nInsert this aria-label?`,
+                                    'Insert',
+                                    'Skip',
+                                    'Cancel'
+                                );
+
+                                if (choice === 'Insert') {
+                                    const success = await safeEditDocument(editor, selection, result.newText);
+                                    if (!success) {
+                                        return;
+                                    }
+                                } else if (choice === 'Cancel') {
+                                    vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
+                                    return;
+                                }
+                            }
+                        }
                     }
+                } catch (error) {
+                    // Increment failure count on error
+                    failureCount++;
+                    // Error already displayed in processor functions, ignore here
                 }
-            } catch (error) {
-                // Increment failure count on error
-                failureCount++;
-                // Error already displayed in processSingleVideoTag, ignore here
+
+                processedCount++;
             }
 
-            processedCount++;
+            // Clear cache after processing chunk to free memory
+            contextCache?.clear();
         }
 
         // Display completion message

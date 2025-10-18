@@ -42,6 +42,17 @@ export const TAG_DETECTION = {
 } as const;
 
 /**
+ * Selection Thresholds
+ * Used to determine empty selections and minimum tag text length
+ */
+export const SELECTION_THRESHOLDS = {
+    /** Minimum selection length to be considered non-empty */
+    MIN_SELECTION_LENGTH: 5,
+    /** Minimum tag text length for detection */
+    MIN_TAG_TEXT_LENGTH: 10,
+} as const;
+
+/**
  * Character Constraints for ALT Text Generation
  * Used in prompts to constrain the length of generated descriptions
  */

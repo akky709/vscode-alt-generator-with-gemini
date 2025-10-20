@@ -15,32 +15,34 @@
   "config.geminiApiModel.enum.flash": "高速かつ高性能（推奨）",
   "config.geminiApiModel.enum.flash8b": "超高速処理",
 
-  "config.generationMode.description": "生成モード",
-  "config.generationMode.enum.seo": "SEO: 検索エンジンとクローラー向けに最適化されたコンテンツ",
-  "config.generationMode.enum.a11y": "A11Y: スクリーンリーダー利用者向けに最適化されたコンテンツ",
+  "config.generationMode.description": "ALT生成モード",
+  "config.generationMode.markdownDescription": "生成されるALTが何を重視するかを設定します。",
+  "config.generationMode.enum.seo": "SEO: 検索エンジン最適化（SEO）に焦点を当てたALTを生成します",
+  "config.generationMode.enum.a11y": "A11Y: アクセシビリティ（A11Y）向上に焦点を当てたALTを生成します",
 
   "config.insertionMode.description": "挿入モード",
-  "config.insertionMode.enum.auto": "生成したALTタグをすぐに挿入",
-  "config.insertionMode.enum.confirm": "挿入前に確認",
+  "config.insertionMode.markdownDescription": "生成されたテキスト（ALT/ARIA）を、どのように挿入するかを設定します。",
+  "config.insertionMode.enum.auto": "自動: 生成されたテキストを自動で挿入します",
+  "config.insertionMode.enum.confirm": "手動: 生成されたテキストの内容を確認した後に手動で挿入します",
 
   "config.outputLanguage.description": "出力言語",
 
   "config.decorativeKeywords.description": "装飾画像キーワード",
-
-  "config.a11yDescriptionLength.description": "A11Y説明の長さ",
-  "config.a11yDescriptionLength.markdownDescription": "**A11Yモードのみ:** 生成されるALTテキストの詳細度を制御します。",
-  "config.a11yDescriptionLength.enum.standard": "標準: 必要な情報を提供するバランスの取れた説明（日本語50〜120文字、英語60〜130文字）",
-  "config.a11yDescriptionLength.enum.detailed": "詳細: 複雑な画像向けの包括的な説明（日本語100〜200文字、英語100〜200文字）",
+  "config.decorativeKeywords.markdownDescription": "ファイル名にこれらのキーワードが含まれている場合、装飾目的と判定し、ALTを空（`alt=\"\"`）に設定します。",
 
   "config.contextEnabled.description": "周辺テキストを分析",
-  "config.contextEnabled.markdownDescription": "周辺のテキスト（兄弟要素と親要素）を分析して、重複したALT説明を回避します。  \n\n**注意:** トークン使用量が増加します（画像1枚あたり約100〜400トークン）が、SEOとアクセシビリティの両方でコンテンツ品質が向上します。",
+  "config.contextEnabled.markdownDescription": "画像や動画の周辺にあるテキストを読み込み、その文脈を理解してテキスト（ALT/ARIA）を生成します。スクリーンリーダーが同じ情報を二重に読み上げるのを防ぎ、ユーザー体験を向上します。  \n\n**注意:**  \nこの機能を使用すると、API使用量が増加します。",
 
   "config.contextRange.description": "コンテキスト検索範囲",
-  "config.contextRange.markdownDescription": "画像の前後でどの程度の範囲を検索して、関連テキストを含む兄弟要素と親要素を見つけるか。",
-  "config.contextRange.enum.narrow": "狭い（500文字）: 近くの要素を検索 - シンプルなレイアウトに適しています",
-  "config.contextRange.enum.standard": "標準（1500文字）: 離れた要素を検索 - ほとんどの場合に推奨",
-  "config.contextRange.enum.wide": "広い（3000文字）: 非常に離れた要素を検索 - 複雑な入れ子構造用",
-  "config.contextRange.enum.veryWide": "非常に広い（5000文字）: 最大検索範囲 - 非常に複雑なページ構造用",
+  "config.contextRange.markdownDescription": "「コンテキスト分析」利用時、画像や動画の周囲のどこまでテキストを読み込むかを設定します。",
+  "config.contextRange.enum.narrow": "狭い: ごく近い要素のテキストのみ。コスト・速度重視。",
+  "config.contextRange.enum.standard": "標準: ある程度の周辺テキストを含める。バランス重視。",
+  "config.contextRange.enum.wide": "広い: 広範囲のテキストから詳細な文脈を理解。品質重視。",
+
+  "config.videoDescriptionLength.description": "動画説明の長さ",
+  "config.videoDescriptionLength.markdownDescription": "生成される動画の説明テキストの詳細レベルを設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください。",
+  "config.videoDescriptionLength.enum.standard": "標準: 動画の目的や機能を説明する短いaria-labelを生成します。",
+  "config.videoDescriptionLength.enum.detailed": "詳細: 動画の視覚的な内容を含む、より詳しいテキストを生成します。",
 
   "config.customPromptsPath.description": "カスタムプロンプトファイルパス",
   "config.customPromptsPath.markdownDescription": "カスタムプロンプトJSONファイルへのパス（ワークスペースルートからの相対パス）  \n\nカスタムプロンプトはデフォルトプロンプトを上書きします。ファイルが存在しない場合はデフォルトプロンプトが使用されます。  \n\n**例:** `.vscode/alt-prompts.json`"

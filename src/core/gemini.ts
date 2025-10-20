@@ -4,11 +4,11 @@
 
 import * as vscode from 'vscode';
 import fetch, { Response } from 'node-fetch';
-import { getDefaultPrompt, getCharConstraint } from './prompts';
+import { getDefaultPrompt } from './prompts';
 import { getOutputLanguage } from '../utils/config';
 import { CancellationError, NetworkError } from '../utils/errors';
 import { handleHttpError, handleContentBlocked, validateResponseStructure, isRetryableError } from '../utils/errorHandler';
-import { API_CONFIG, JSON_FORMATTING } from '../constants';
+import { API_CONFIG, JSON_FORMATTING, CHAR_CONSTRAINTS } from '../constants';
 
 /**
  * Gemini API response structure
@@ -50,17 +50,16 @@ export async function generateAltText(
     const outputLang = getOutputLanguage();
 
     // 設定からプロンプトを取得
-    const config = vscode.workspace.getConfiguration('altGenGemini');
     let prompt: string;
 
     if (mode === 'A11Y') {
-        // A11Yモード
-        // 文字数設定を取得
-        const descriptionLength = config.get<string>('a11yDescriptionLength', 'standard') as 'standard' | 'detailed';
-        const charLengthConstraint = getCharConstraint(outputLang as 'en' | 'ja', descriptionLength);
+        // A11Yモード - 常に標準の文字数制約を使用
+        const charLengthConstraint = outputLang === 'ja'
+            ? CHAR_CONSTRAINTS.STANDARD_JA
+            : CHAR_CONSTRAINTS.STANDARD_EN;
 
         prompt = getDefaultPrompt('a11y', outputLang as 'en' | 'ja', {
-            mode: descriptionLength,
+            mode: 'standard',
             charConstraint: charLengthConstraint,
             surroundingText
         });
@@ -156,7 +155,8 @@ export async function generateVideoAriaLabel(
     mimeType: string,
     model: string,
     token?: vscode.CancellationToken,
-    surroundingText?: string
+    surroundingText?: string,
+    mode: 'standard' | 'detailed' = 'standard'
 ): Promise<string> {
     // キャンセルチェック
     if (token?.isCancellationRequested) {
@@ -170,7 +170,8 @@ export async function generateVideoAriaLabel(
 
     // プロンプトを取得
     const prompt = getDefaultPrompt('video', outputLang as 'en' | 'ja', {
-        surroundingText
+        surroundingText,
+        mode
     });
 
     const requestBody = {
@@ -322,7 +323,8 @@ export async function generateVideoAriaLabelWithRetry(
     model: string,
     token?: vscode.CancellationToken,
     surroundingText?: string,
-    maxRetries: number = API_CONFIG.MAX_RETRIES
+    maxRetries: number = API_CONFIG.MAX_RETRIES,
+    mode: 'standard' | 'detailed' = 'standard'
 ): Promise<string> {
     let lastError: Error | null = null;
 
@@ -339,7 +341,8 @@ export async function generateVideoAriaLabelWithRetry(
                 mimeType,
                 model,
                 token,
-                surroundingText
+                surroundingText,
+                mode
             );
         } catch (error: unknown) {
             lastError = error instanceof Error ? error : new Error('Unknown error');

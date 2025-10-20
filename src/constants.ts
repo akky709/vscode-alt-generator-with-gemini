@@ -86,8 +86,10 @@ export const PROMPT_CONSTRAINTS = {
     MAX_SUPPLEMENTARY_CHARS: 50,
     /** Maximum words for supplementary video description */
     MAX_SUPPLEMENTARY_WORDS_VIDEO: 5,
-    /** Maximum words for video aria-label */
+    /** Maximum words for video aria-label (standard mode) */
     MAX_VIDEO_ARIA_LABEL_WORDS: 10,
+    /** Maximum words for detailed video description */
+    MAX_VIDEO_DETAILED_WORDS: 50,
 } as const;
 
 /**
@@ -116,7 +118,6 @@ export const CONTEXT_RANGE_VALUES = {
     'narrow': 500,
     'standard': 1500,
     'wide': 3000,
-    'very-wide': 5000,
     /** Default fallback value */
     'default': 1500,
 } as const;

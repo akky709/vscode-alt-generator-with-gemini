@@ -34,3 +34,30 @@ export function getVideoMimeType(filePath: string): string {
     };
     return mimeTypes[ext] || 'video/mp4';
 }
+
+/**
+ * Get comment format based on file extension
+ * @param filePath - Path to the file
+ * @param content - Content to be commented
+ * @returns Formatted comment string
+ */
+export function getCommentFormat(filePath: string, content: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+
+    switch (ext) {
+        case '.jsx':
+        case '.tsx':
+            // JSX/TSX: {/* comment */}
+            return `{/* ${content} */}`;
+
+        case '.php':
+            // PHP: <?php /* comment */ ?>
+            return `<?php /* ${content} */ ?>`;
+
+        case '.html':
+        case '.htm':
+        default:
+            // HTML and others: <!-- comment -->
+            return `<!-- ${content} -->`;
+    }
+}

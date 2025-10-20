@@ -15,32 +15,34 @@
   "config.geminiApiModel.enum.flash": "Fast and intelligent (recommended)",
   "config.geminiApiModel.enum.flash8b": "Ultra-fast processing",
 
-  "config.generationMode.description": "Generation Mode",
-  "config.generationMode.enum.seo": "SEO: Content optimized for search engines and crawlers",
-  "config.generationMode.enum.a11y": "A11Y: Content optimized for screen reader users",
+  "config.generationMode.description": "ALT Generation Mode",
+  "config.generationMode.markdownDescription": "Determines what the generated ALT text prioritizes.",
+  "config.generationMode.enum.seo": "SEO: Generate ALT text focused on search engine optimization (SEO)",
+  "config.generationMode.enum.a11y": "A11Y: Generate ALT text focused on accessibility (A11Y) improvement",
 
   "config.insertionMode.description": "Insertion Mode",
-  "config.insertionMode.enum.auto": "Insert generated ALT tags immediately",
-  "config.insertionMode.enum.confirm": "Review before insertion",
+  "config.insertionMode.markdownDescription": "Determines how the generated text (ALT/ARIA) will be inserted.",
+  "config.insertionMode.enum.auto": "Auto: Insert generated text automatically",
+  "config.insertionMode.enum.confirm": "Manual: Review generated text content before manual insertion",
 
   "config.outputLanguage.description": "Output Language",
 
   "config.decorativeKeywords.description": "Decorative Image Keywords",
-
-  "config.a11yDescriptionLength.description": "A11Y Description Length",
-  "config.a11yDescriptionLength.markdownDescription": "**A11Y mode only:** Control the level of detail in generated ALT text descriptions.",
-  "config.a11yDescriptionLength.enum.standard": "Standard: Balanced descriptions that provide essential information (50-120 chars for Japanese, 60-130 chars for English)",
-  "config.a11yDescriptionLength.enum.detailed": "Detailed: Comprehensive descriptions for complex images (100-200 chars for Japanese, 100-200 chars for English)",
+  "config.decorativeKeywords.markdownDescription": "If the filename contains these keywords, it will be identified as decorative and the ALT will be set to empty (`alt=\"\"`).",
 
   "config.contextEnabled.description": "Analyze Surrounding Text",
-  "config.contextEnabled.markdownDescription": "Analyze surrounding text (sibling and parent elements) to avoid redundant ALT descriptions.  \n\n**Note:** This increases token usage (~100-400 tokens per image) but improves content quality for both SEO and accessibility.",
+  "config.contextEnabled.markdownDescription": "Reads the text surrounding images and videos to understand the context and generate appropriate text (ALT/ARIA). This prevents screen readers from reading the same information twice, improving user experience.  \n\n**Note:**  \nEnabling this feature will increase API usage.",
 
   "config.contextRange.description": "Context Search Range",
-  "config.contextRange.markdownDescription": "How far to search before and after the image for sibling and parent elements containing relevant text.",
-  "config.contextRange.enum.narrow": "Narrow (500 chars): Searches nearby elements - suitable for simple layouts",
-  "config.contextRange.enum.standard": "Standard (1500 chars): Searches distant elements - recommended for most cases",
-  "config.contextRange.enum.wide": "Wide (3000 chars): Searches very distant elements - for complex nested structures",
-  "config.contextRange.enum.veryWide": "Very Wide (5000 chars): Maximum search range - for extremely complex page structures",
+  "config.contextRange.markdownDescription": "When \"Context Analysis\" is enabled, this determines how far around the image or video to read text from.",
+  "config.contextRange.enum.narrow": "Narrow: Only text from very nearby elements. Cost and speed priority.",
+  "config.contextRange.enum.standard": "Standard: Includes surrounding text to some extent. Balanced priority.",
+  "config.contextRange.enum.wide": "Wide: Understands detailed context from a wide range of text. Quality priority.",
+
+  "config.videoDescriptionLength.description": "Video Description Length",
+  "config.videoDescriptionLength.markdownDescription": "Sets the detail level of the generated video description text. Use detailed mode for creating text manuscripts for audio descriptions, etc.",
+  "config.videoDescriptionLength.enum.standard": "Standard: Generate a short aria-label that describes the video's purpose or function.",
+  "config.videoDescriptionLength.enum.detailed": "Detailed: Generate more detailed text including the visual content of the video.",
 
   "config.customPromptsPath.description": "Custom Prompts File Path",
   "config.customPromptsPath.markdownDescription": "Path to custom prompts JSON file (relative to workspace root).  \n\nCustom prompts override default prompts. If the file doesn't exist, default prompts are used.  \n\n**Example:** `.vscode/alt-prompts.json`"

@@ -12,7 +12,9 @@ Automatically generate ALT attributes for img tags and aria-label attributes for
 
 ### 🎬 Video aria-label Generation
 - Generate aria-label attributes for `<video>` tags
-- Analyzes video content to create descriptions
+- Two modes: **Standard** (short aria-label) and **Detailed** (comprehensive description as HTML comment)
+- Supports `<source>` tags within `<video>` elements
+- File-type aware comments (HTML, JSX/TSX, PHP)
 
 #### ⚠️ Important Accessibility Notice
 
@@ -115,13 +117,14 @@ Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
 - **Gemini API Key**: Paste your API key
 
 **Optional:**
-- **Gemini API Model**: Choose from Pro 2.5 (most advanced), Flash 2.5 (fast & intelligent, recommended), or Flash-Lite 2.5 (ultra-fast)
-- **Generation Mode**: SEO or A11Y
-- **Insertion Mode**: Auto (insert immediately) or Confirm (review before insertion)
-- **Output Language**: Auto, Japanese, or English
-- **Context Enabled**: Enable/disable surrounding text analysis (default: enabled)
-- **Context Range**: How much surrounding text to analyze - Narrow (500 chars), Standard (1500 chars), Wide (3000 chars), or Very Wide (5000 chars)
+- **Gemini API Model**: Choose from Pro 2.5, Flash 2.5, or Flash-Lite 2.5
+- **Generation Mode**: SEO or A11Y (default: SEO)
+- **Insertion Mode**: Auto or Manual (default: Manual - review before insertion)
+- **Output Language**: Auto, Japanese, or English (default: Auto)
 - **Decorative Keywords**: Customize keywords for decorative image detection
+- **Context Enabled**: Enable/disable surrounding text analysis (default: enabled)
+- **Context Range**: Narrow, Standard, or Wide (default: Standard)
+- **Video Description Length**: Standard (aria-label) or Detailed (HTML comment) (default: Standard)
 
 Or edit `settings.json`:
 ```json
@@ -129,11 +132,12 @@ Or edit `settings.json`:
   "altGenGemini.geminiApiKey": "YOUR_API_KEY",
   "altGenGemini.geminiApiModel": "gemini-2.5-flash",
   "altGenGemini.generationMode": "SEO",
-  "altGenGemini.insertionMode": "auto",
+  "altGenGemini.insertionMode": "confirm",
   "altGenGemini.outputLanguage": "auto",
+  "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"],
   "altGenGemini.contextEnabled": true,
   "altGenGemini.contextRange": "standard",
-  "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"]
+  "altGenGemini.videoDescriptionLength": "standard"
 }
 ```
 
@@ -177,6 +181,42 @@ After entering your API key in settings, it will be automatically:
 2. Press `Cmd+Shift+P` (Windows: `Ctrl+Shift+P`)
 3. Select "Generate aria-label attribute for video tags"
 
+### Insertion Modes
+
+The extension supports two insertion modes for both **images (ALT)** and **videos (aria-label/descriptions)**:
+
+**Manual Mode (Default):**
+- Generated text is shown in a preview dialog before insertion
+- You can review and edit the text before applying
+- Allows you to accept, modify, or reject each suggestion
+- Recommended for quality control and batch processing
+
+**Auto Mode:**
+- Generated text is inserted immediately into your code
+- Best for quick workflows and when you trust the AI output
+- No additional confirmation required
+
+**To change the insertion mode:**
+1. Press `Cmd+,` (Windows: `Ctrl+,`) to open Settings
+2. Search for "Alt Generator: Insertion Mode"
+3. Choose "Auto" or "Manual"
+
+### Video Description Modes
+
+**Standard Mode (Default):**
+- Generates a short aria-label (max 10 words) describing the video's purpose or function
+- Inserted as `aria-label` attribute on the `<video>` tag
+- Follows accessibility best practices
+
+**Detailed Mode:**
+- Generates comprehensive description (max 50 words) including visual content
+- Inserted as an HTML comment near the video tag (not as aria-label)
+- Comment format automatically adapts to file type:
+  - HTML: `<!-- Video description: ... -->`
+  - JSX/TSX: `{/* Video description: ... */}`
+  - PHP: `<?php /* Video description: ... */ ?>`
+- Useful for creating text manuscripts for audio descriptions
+
 ## Decorative Images
 
 Images with these keywords in filename are automatically assigned `alt=""`:
@@ -213,7 +253,7 @@ Customize keywords in settings to match your project's naming conventions.
 - If an image is blocked, you'll need to manually write the alt text or use a different image
 
 ### Slow Performance with Large Files
-- **Reduce Context Range**: Switch from "Very Wide" to "Standard" or "Narrow"
+- **Reduce Context Range**: Switch from "Wide" to "Standard" or "Narrow"
 - **Disable Context**: Turn off context analysis for faster processing
 - **Process in Smaller Batches**: Select fewer tags at once
 - **Check File Size**: Large HTML files (>500KB) may slow down parsing
@@ -241,9 +281,35 @@ When **Context Enabled** is on, the extension analyzes surrounding HTML elements
 - Intelligently detects redundant descriptions (returns `alt=""` when context already describes the image)
 
 ### Recommended Settings
-- **For best accuracy**: Context Range = "Wide" or "Very Wide"
+- **For best accuracy**: Context Range = "Wide"
 - **For faster processing**: Context Range = "Narrow" or disable context
-- **For large batches**: Use "Confirm" insertion mode to review before applying
+- **For large batches**: Use "Manual" insertion mode to review before applying
+
+### Custom Prompts
+
+You can customize the prompts used for generating ALT text and aria-labels by creating a `.vscode/alt-prompts.json` file in your workspace.
+
+**Example:**
+```json
+{
+  "seo": "You are an SEO expert. Generate highly optimized ALT text...",
+  "a11y": {
+    "standard": "You are a web accessibility expert. Generate ALT text for users with visual impairments..."
+  },
+  "video": {
+    "standard": "Generate a short aria-label for the video...",
+    "detailed": "Generate a comprehensive description of the video..."
+  }
+}
+```
+
+See `.vscode/alt-prompts.json.example` for a complete example.
+
+**Notes:**
+- Custom prompts are language-independent (write in any language you prefer)
+- For A11Y prompts, use `{charConstraint}` placeholder for character limits
+- The extension automatically appends context instructions when Context Enabled is on
+- Custom prompts override default prompts
 
 ## Notes
 

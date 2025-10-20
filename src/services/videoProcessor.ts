@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { generateVideoAriaLabelWithRetry } from '../core/gemini';
 import { safeEditDocument, escapeHtml, sanitizeFilePath } from '../utils/security';
-import { getVideoMimeType } from '../utils/fileUtils';
+import { getVideoMimeType, getCommentFormat } from '../utils/fileUtils';
 import { formatMessage, extractSurroundingText } from '../utils/textUtils';
 import { getContextRangeValue } from '../utils/config';
 import { detectStaticFileDirectory } from './frameworkDetector';
@@ -216,6 +216,7 @@ export async function processSingleVideoTag(
 
     const config = vscode.workspace.getConfiguration('altGenGemini');
     const geminiModel = config.get<string>('geminiApiModel', API_CONFIG.DEFAULT_MODEL);
+    const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard') as 'standard' | 'detailed';
 
     // Get surrounding text (use cached if available, otherwise extract)
     let surroundingText: string | undefined;
@@ -236,15 +237,16 @@ export async function processSingleVideoTag(
         return;
     }
 
-    // Generate aria-label
-    const ariaLabel = await generateVideoAriaLabelWithRetry(
+    // Generate aria-label or description
+    const description = await generateVideoAriaLabelWithRetry(
         apiKey,
         videoData.base64Video,
         videoData.mimeType,
         geminiModel,
         token,
         surroundingText,
-        API_CONFIG.MAX_RETRIES
+        API_CONFIG.MAX_RETRIES,
+        videoDescriptionLength
     );
 
     if (token?.isCancellationRequested) {
@@ -252,7 +254,7 @@ export async function processSingleVideoTag(
     }
 
     // Handle DECORATIVE response (don't add aria-label)
-    if (ariaLabel.trim() === SPECIAL_KEYWORDS.DECORATIVE) {
+    if (description.trim() === SPECIAL_KEYWORDS.DECORATIVE) {
         if (insertionMode === 'auto') {
             vscode.window.showInformationMessage('📝 aria-label: Already described by surrounding text (not added)');
         }
@@ -263,16 +265,32 @@ export async function processSingleVideoTag(
         };
     }
 
-    // Apply aria-label
-    const newText = applyAriaLabelToTag(videoTagInfo.selectedText, ariaLabel);
+    // Handle detailed mode - output as comment (format based on file type)
+    if (videoDescriptionLength === 'detailed') {
+        const comment = getCommentFormat(editor.document.fileName, `Video description: ${description}`);
+        const newText = `${comment}\n${videoTagInfo.selectedText}`;
+
+        if (insertionMode === 'auto') {
+            const success = await safeEditDocument(editor, videoTagInfo.actualSelection, newText);
+            if (success) {
+                vscode.window.showInformationMessage(formatMessage('✅ Video description added as comment: {0}', description));
+            }
+            return { newText, ariaLabel: description, success: true };
+        } else {
+            return { newText, ariaLabel: description, success: true };
+        }
+    }
+
+    // Standard mode - Apply aria-label
+    const newText = applyAriaLabelToTag(videoTagInfo.selectedText, description);
 
     if (insertionMode === 'auto') {
         const success = await safeEditDocument(editor, videoTagInfo.actualSelection, newText);
         if (success) {
-            vscode.window.showInformationMessage(formatMessage('✅ aria-label: {0}', ariaLabel));
+            vscode.window.showInformationMessage(formatMessage('✅ aria-label: {0}', description));
         }
-        return { newText, ariaLabel, success: true };
+        return { newText, ariaLabel: description, success: true };
     } else {
-        return { newText, ariaLabel, success: true };
+        return { newText, ariaLabel: description, success: true };
     }
 }

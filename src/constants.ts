@@ -149,3 +149,50 @@ export const BATCH_PROCESSING = {
     /** Number of items to process in each chunk for memory efficiency */
     CHUNK_SIZE: 10,
 } as const;
+
+/**
+ * HTML Elements Configuration
+ */
+export const HTML_ELEMENTS = {
+    /** Common block-level and inline HTML tags for context extraction */
+    BLOCK_TAGS: ['div', 'section', 'article', 'main', 'aside', 'header', 'footer', 'nav', 'figure', 'li', 'td', 'th', 'p', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'figcaption', 'caption', 'span', 'a'] as const,
+} as const;
+
+/**
+ * Error Messages
+ */
+export const ERROR_MESSAGES = {
+    /** Editor errors */
+    NO_ACTIVE_EDITOR: '❌ No active editor',
+    EDITOR_CLOSED: 'Editor was closed during ALT generation. Please try again.',
+    DOCUMENT_EDIT_FAILED: 'Failed to edit document. The file may have been closed or modified.',
+
+    /** Tag detection errors */
+    NO_TAG_FOUND: '❌ No img or video tag found',
+    IMG_TAG_NOT_FOUND: '❌ img tag not found',
+    VIDEO_TAG_NOT_FOUND: '❌ video tag not found',
+    IMG_SRC_NOT_FOUND: '❌ img src not found',
+    VIDEO_SRC_NOT_FOUND: '❌ video src not found',
+    TAG_END_NOT_FOUND: '❌ {0} tag end not found',
+
+    /** File errors */
+    WORKSPACE_NOT_OPENED: '❌ Workspace not opened',
+    IMAGE_NOT_FOUND: '❌ Image not found: {0}',
+    VIDEO_NOT_FOUND: '❌ Video not found: {0}',
+    INVALID_FILE_PATH: '🚫 Invalid file path',
+
+    /** Format errors */
+    SVG_NOT_SUPPORTED: '🚫 SVG not supported. Convert to PNG/JPG first.',
+    VIDEO_TOO_LARGE: '❌ Video too large ({0}MB). Max {1}MB.',
+    DYNAMIC_SRC_NOT_SUPPORTED: '🚫 Dynamic src not supported: {0}',
+    INVALID_IMAGE_SOURCE: '🚫 Invalid image source: {0}',
+
+    /** API errors */
+    API_KEY_NOT_CONFIGURED: '🔑 API key not configured',
+    FETCH_IMAGE_FAILED: '❌ Failed to fetch image: {0}',
+    FETCH_IMAGE_ERROR: '❌ Error fetching image: {0}',
+
+    /** Other */
+    TAG_DETECTION_TIMEOUT: 'Tag detection timeout - text may be too complex',
+    SELECTION_TOO_LARGE: 'Selected text is too large for tag detection',
+} as const;

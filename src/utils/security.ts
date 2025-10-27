@@ -89,7 +89,7 @@ export function sanitizeFilePath(filePath: string, basePath: string): string | n
 /**
  * Validation result for image src attribute
  */
-export interface ValidationResult {
+interface ValidationResult {
     valid: boolean;
     reason?: string;
 }

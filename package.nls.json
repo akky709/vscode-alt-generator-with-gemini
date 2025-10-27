@@ -2,9 +2,9 @@
   "displayName": "ALT Generator with Gemini",
   "description": "Auto-generate ALT attributes for img tags using Gemini API (supports HTML/PHP/JSX/TSX with static paths)",
 
-  "command.generateAlt": "Generate ALT attribute for img tags",
-  "command.generateVideoAriaLabel": "Generate aria-label attribute for video tags",
-  "command.clearApiKey": "Clear Gemini API Key (for debugging)",
+  "command.generateAlt": "Generate ALT for images",
+  "command.generateVideoAriaLabel": "Generate ARIA-LABEL or description for videos",
+  "command.clearApiKey": "Clear Gemini API Key",
 
   "config.geminiApiKey.description": "Gemini API Key",
   "config.geminiApiKey.markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))  \n\n**Note:** The API key is stored securely and displayed as dots for security.  \n[Clear API Key](command:alt-generator.clearApiKey)",
@@ -15,35 +15,35 @@
   "config.geminiApiModel.enum.flash": "Fast and intelligent (recommended)",
   "config.geminiApiModel.enum.flash8b": "Ultra-fast processing",
 
-  "config.generationMode.description": "ALT Generation Mode",
-  "config.generationMode.markdownDescription": "Determines what the generated ALT text prioritizes.",
+  "config.generationMode.description": "[ALT] Set what to prioritize when generating text",
+  "config.generationMode.markdownDescription": "[ALT] Set what to prioritize when generating text.",
   "config.generationMode.enum.seo": "SEO: Generate ALT text focused on search engine optimization (SEO)",
   "config.generationMode.enum.a11y": "A11Y: Generate ALT text focused on accessibility (A11Y) improvement",
 
-  "config.insertionMode.description": "Insertion Mode",
-  "config.insertionMode.markdownDescription": "Determines how the generated text (ALT/ARIA) will be inserted.",
+  "config.insertionMode.description": "Set how to insert generated text",
+  "config.insertionMode.markdownDescription": "Set how to insert generated text.",
   "config.insertionMode.enum.auto": "Auto: Insert generated text automatically",
   "config.insertionMode.enum.confirm": "Manual: Review generated text content before manual insertion",
 
-  "config.outputLanguage.description": "Output Language",
+  "config.outputLanguage.description": "Set the language of generated text",
 
   "config.decorativeKeywords.description": "Decorative Image Keywords",
   "config.decorativeKeywords.markdownDescription": "If the filename contains these keywords, it will be identified as decorative and the ALT will be set to empty (`alt=\"\"`).",
 
-  "config.contextEnabled.description": "Analyze Surrounding Text",
-  "config.contextEnabled.markdownDescription": "Reads the text surrounding images and videos to understand the context and generate appropriate text (ALT/ARIA). This prevents screen readers from reading the same information twice, improving user experience.  \n\n**Note:**  \nEnabling this feature will increase API usage.",
+  "config.contextEnabled.description": "Analyze information around img and video tags to generate more appropriate text that fits the context",
+  "config.contextEnabled.markdownDescription": "Analyze information around img and video tags to generate more appropriate text that fits the context. This prevents screen readers from reading the same information twice, improving user experience.  \n\n**Note:** Enabling this feature will increase API usage.",
 
-  "config.contextRange.description": "Context Search Range",
-  "config.contextRange.markdownDescription": "When \"Context Analysis\" is enabled, this determines how far around the image or video to read text from.",
+  "config.contextRange.description": "Set the width of text used for context analysis. Wider range improves accuracy",
+  "config.contextRange.markdownDescription": "Set the width of text used for context analysis. Wider range improves accuracy.",
   "config.contextRange.enum.narrow": "Narrow: Only text from very nearby elements. Cost and speed priority.",
   "config.contextRange.enum.standard": "Standard: Includes surrounding text to some extent. Balanced priority.",
   "config.contextRange.enum.wide": "Wide: Understands detailed context from a wide range of text. Quality priority.",
 
-  "config.videoDescriptionLength.description": "Video Description Length",
-  "config.videoDescriptionLength.markdownDescription": "Sets the detail level of the generated video description text. Use detailed mode for creating text manuscripts for audio descriptions, etc.",
+  "config.videoDescriptionLength.description": "[ARIA-LABEL] Set the detail level of generated text. Use detailed mode for creating text manuscripts for audio descriptions, etc",
+  "config.videoDescriptionLength.markdownDescription": "[ARIA-LABEL] Set the detail level of generated text. Use detailed mode for creating text manuscripts for audio descriptions, etc.",
   "config.videoDescriptionLength.enum.standard": "Standard: Generate a short aria-label that describes the video's purpose or function.",
   "config.videoDescriptionLength.enum.detailed": "Detailed: Generate more detailed text including the visual content of the video.",
 
   "config.customPromptsPath.description": "Custom Prompts File Path",
-  "config.customPromptsPath.markdownDescription": "Path to custom prompts JSON file (relative to workspace root).  \n\nCustom prompts override default prompts. If the file doesn't exist, default prompts are used.  \n\n**Example:** `.vscode/alt-prompts.json`"
+  "config.customPromptsPath.markdownDescription": "Path to custom prompts JSON file (relative to workspace root).  \n\nCustom prompts override default prompts. If the file doesn't exist, default prompts are used.  \n\n**Example:** `.vscode/custom-prompts.json`"
 }

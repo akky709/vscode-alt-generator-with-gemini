@@ -285,31 +285,11 @@ When **Context Enabled** is on, the extension analyzes surrounding HTML elements
 - **For faster processing**: Context Range = "Narrow" or disable context
 - **For large batches**: Use "Manual" insertion mode to review before applying
 
-### Custom Prompts
+### Custom Prompts (Advanced)
 
-You can customize the prompts used for generating ALT text and aria-labels by creating a `.vscode/alt-prompts.json` file in your workspace.
+For advanced users, this extension supports custom prompt configuration to fine-tune AI-generated text according to your specific requirements.
 
-**Example:**
-```json
-{
-  "seo": "You are an SEO expert. Generate highly optimized ALT text...",
-  "a11y": {
-    "standard": "You are a web accessibility expert. Generate ALT text for users with visual impairments..."
-  },
-  "video": {
-    "standard": "Generate a short aria-label for the video...",
-    "detailed": "Generate a comprehensive description of the video..."
-  }
-}
-```
-
-See `.vscode/alt-prompts.json.example` for a complete example.
-
-**Notes:**
-- Custom prompts are language-independent (write in any language you prefer)
-- For A11Y prompts, use `{charConstraint}` placeholder for character limits
-- The extension automatically appends context instructions when Context Enabled is on
-- Custom prompts override default prompts
+You can specify a custom prompts JSON file path in the extension settings (`Alt Generator: Custom Prompts Path`). By default, the extension looks for `.vscode/custom-prompts.json` in your workspace.
 
 ## Notes
 

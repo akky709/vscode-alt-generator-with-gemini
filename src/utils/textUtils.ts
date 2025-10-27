@@ -58,7 +58,7 @@ export function formatMessage(message: string, ...args: unknown[]): string {
  * Uses safer regex patterns to prevent ReDoS attacks
  * Uses pre-compiled regex for performance
  */
-export function stripHtmlTags(text: string): string {
+function stripHtmlTags(text: string): string {
     // Limit text length to prevent ReDoS attacks
     if (text.length > TEXT_PROCESSING.MAX_TEXT_LENGTH) {
         text = text.substring(0, TEXT_PROCESSING.MAX_TEXT_LENGTH);
@@ -79,7 +79,7 @@ export function stripHtmlTags(text: string): string {
 /**
  * Find parent element containing the image
  */
-export function findParentElement(
+function findParentElement(
     fullText: string,
     imageStart: number,
     imageEnd: number,
@@ -142,7 +142,7 @@ export function findParentElement(
 /**
  * Find sibling elements before and after the image
  */
-export function findSiblingElements(
+function findSiblingElements(
     fullText: string,
     imageStart: number,
     imageEnd: number,
@@ -250,16 +250,55 @@ export function extractSurroundingText(
     const imageStart = document.offsetAt(tagRange.start);
     const imageEnd = document.offsetAt(tagRange.end);
 
-    const collectedTexts: string[] = [];
+    const collectedTextSet = new Set<string>(); // 重複チェック用
     let currentImageStart = imageStart;
     let currentImageEnd = imageEnd;
     let level = 0;
 
     // まず兄弟要素からテキストを収集
+    const beforeTexts: string[] = [];
+    const afterTexts: string[] = [];
+
+    /**
+     * Check if text is duplicate or substring of existing texts
+     */
+    function isDuplicateOrSubstring(newText: string, existingTexts: string[]): boolean {
+        // Exact match check
+        if (collectedTextSet.has(newText)) {
+            return true;
+        }
+
+        // Check if newText is substring of any existing text
+        for (const existing of existingTexts) {
+            if (existing.includes(newText)) {
+                return true;
+            }
+        }
+
+        // Check if any existing text is substring of newText
+        for (const existing of existingTexts) {
+            if (newText.includes(existing)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     const siblings = findSiblingElements(fullText, imageStart, imageEnd, contextRange);
     for (const sibling of siblings) {
-        const prefix = sibling.position === 'before' ? 'before' : 'after';
-        collectedTexts.push(`[Text in <${sibling.tagName}> sibling ${prefix} image]: ${sibling.text}`);
+        const text = sibling.text.trim();
+        if (text.length === 0) {
+            continue;
+        }
+
+        const targetArray = sibling.position === 'before' ? beforeTexts : afterTexts;
+
+        // 重複または部分一致していないテキストのみ追加
+        if (!isDuplicateOrSubstring(text, targetArray)) {
+            targetArray.push(text);
+            collectedTextSet.add(text);
+        }
     }
 
     // 最大階層まで親要素をさかのぼる
@@ -278,12 +317,14 @@ export function extractSurroundingText(
         const cleanedBefore = stripHtmlTags(beforeImage).trim();
         const cleanedAfter = stripHtmlTags(afterImage).trim();
 
-        // テキストを収集
-        if (cleanedBefore.length > 0) {
-            collectedTexts.push(`[Text in <${parent.tagName}> parent before image]: ${cleanedBefore}`);
+        // 重複または部分一致していないテキストのみ収集
+        if (cleanedBefore.length > 0 && !isDuplicateOrSubstring(cleanedBefore, beforeTexts)) {
+            beforeTexts.push(cleanedBefore);
+            collectedTextSet.add(cleanedBefore);
         }
-        if (cleanedAfter.length > 0) {
-            collectedTexts.push(`[Text in <${parent.tagName}> parent after image]: ${cleanedAfter}`);
+        if (cleanedAfter.length > 0 && !isDuplicateOrSubstring(cleanedAfter, afterTexts)) {
+            afterTexts.push(cleanedAfter);
+            collectedTextSet.add(cleanedAfter);
         }
 
         // 十分なテキストが集まったら終了
@@ -299,9 +340,22 @@ export function extractSurroundingText(
     }
 
     // テキストが見つからなかった場合
-    if (collectedTexts.length === 0) {
+    if (beforeTexts.length === 0 && afterTexts.length === 0) {
         return '[No surrounding text found]';
     }
 
-    return '[IMAGE LOCATION]\n' + collectedTexts.join('\n');
+    // フォーマット済みのテキストを構築
+    const formattedTexts: string[] = [];
+
+    // BEFORE テキストを追加
+    for (const text of beforeTexts) {
+        formattedTexts.push(`- BEFORE_MEDIA: ${text}`);
+    }
+
+    // AFTER テキストを追加
+    for (const text of afterTexts) {
+        formattedTexts.push(`- AFTER_MEDIA: ${text}`);
+    }
+
+    return formattedTexts.join('\n');
 }

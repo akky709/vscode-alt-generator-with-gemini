@@ -86,13 +86,46 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const selection = editor.selection;
 
+        // Get insertion mode from settings
+        const config = vscode.workspace.getConfiguration('altGenGemini');
+        const insertionMode = config.get<'auto' | 'confirm'>('insertionMode', 'confirm');
+
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: 'Generating...',
             cancellable: true
-        }, async (_progress, token) => {
+        }, async (progress, token) => {
             try {
-                await processSingleVideoTag(context, editor, selection, token, 'auto');
+                const result = await processSingleVideoTag(context, editor, selection, token, insertionMode, undefined, progress);
+
+                // Show result dialog for confirm mode
+                if (result && insertionMode === 'confirm') {
+                    // For DECORATIVE case (no aria-label added), just show info message
+                    if (result.ariaLabel.includes('not added')) {
+                        vscode.window.showInformationMessage('📝 aria-label: Already described by surrounding text (not added)');
+                    } else {
+                        // Get video description length mode to customize message
+                        const config = vscode.workspace.getConfiguration('altGenGemini');
+                        const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard');
+
+                        // Show confirmation dialog with appropriate message
+                        const message = videoDescriptionLength === 'detailed'
+                            ? `✅ Video description (as comment): ${result.ariaLabel}`
+                            : `✅ aria-label: ${result.ariaLabel}`;
+
+                        // Single item: show only Insert and Cancel (no Skip)
+                        const choice = await vscode.window.showInformationMessage(
+                            message,
+                            'Insert',
+                            'Cancel'
+                        );
+
+                        if (choice === 'Insert') {
+                            // Use actualSelection from result to insert at correct position
+                            await safeEditDocument(editor, result.actualSelection, result.newText);
+                        }
+                    }
+                }
             } catch (error) {
                 // Cancellation errors are already handled
                 if (error instanceof CancellationError || token.isCancellationRequested) {
@@ -276,7 +309,7 @@ async function processMultipleTags(
                         if (result && insertionMode === 'confirm') {
                             // Show individual confirmation dialog
                             const choice = await vscode.window.showInformationMessage(
-                                `✅ ALT: ${result.altText}\n\nInsert this ALT?`,
+                                `✅ ALT: ${result.altText}`,
                                 'Insert',
                                 'Skip',
                                 'Cancel'
@@ -293,8 +326,8 @@ async function processMultipleTags(
                             }
                         }
                     } else {
-                        // Video tag processing
-                        const result = await processSingleVideoTag(context, editor, selection, token, insertionMode, cachedContext);
+                        // Video tag processing (progress is already reported above at line 254-261)
+                        const result = await processSingleVideoTag(context, editor, selection, token, insertionMode, cachedContext, undefined);
 
                         // Count success/failure
                         if (result && result.success !== false) {
@@ -306,16 +339,25 @@ async function processMultipleTags(
                         if (result && insertionMode === 'confirm') {
                             // For DECORATIVE case (no aria-label added), skip confirmation dialog
                             if (!result.ariaLabel.includes('not added')) {
-                                // Show individual confirmation dialog
+                                // Get video description length mode to customize message
+                                const config = vscode.workspace.getConfiguration('altGenGemini');
+                                const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard');
+
+                                // Show individual confirmation dialog with appropriate message
+                                const message = videoDescriptionLength === 'detailed'
+                                    ? `✅ Video description (as comment): ${result.ariaLabel}`
+                                    : `✅ aria-label: ${result.ariaLabel}`;
+
                                 const choice = await vscode.window.showInformationMessage(
-                                    `✅ aria-label: ${result.ariaLabel}\n\nInsert this aria-label?`,
+                                    message,
                                     'Insert',
                                     'Skip',
                                     'Cancel'
                                 );
 
                                 if (choice === 'Insert') {
-                                    const success = await safeEditDocument(editor, selection, result.newText);
+                                    // Use actualSelection from result to insert at correct position
+                                    const success = await safeEditDocument(editor, result.actualSelection, result.newText);
                                     if (!success) {
                                         return;
                                     }
@@ -367,7 +409,7 @@ async function generateAltForImages(
         // Pre-fetch configuration for optimization
         const insertionMode = getInsertionMode();
 
-        // Always display progress dialog
+        // Always display progress dialog with indeterminate animation
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: 'Generating...',
@@ -386,6 +428,7 @@ async function generateAltForImages(
                 }
 
                 try {
+                    // Report progress to show animation
                     const result = await processSingleImageTag(context, editor, selection, token, progress, processedCount, totalCount, insertionMode);
 
                     // Count success/failure
@@ -399,10 +442,10 @@ async function generateAltForImages(
                     if (result) {
                         if (insertionMode === 'confirm') {
                             // Show confirmation dialog for each image immediately
+                            // Single item: show only Insert and Cancel (no Skip)
                             const choice = await vscode.window.showInformationMessage(
-                                `✅ ALT: ${result.altText}\n\nInsert this ALT?`,
+                                `✅ ALT: ${result.altText}`,
                                 'Insert',
-                                'Skip',
                                 'Cancel'
                             );
 

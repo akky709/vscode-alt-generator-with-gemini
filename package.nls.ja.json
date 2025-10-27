@@ -2,9 +2,9 @@
   "displayName": "ALT Generator with Gemini",
   "description": "Gemini APIを使用してimgタグのALT属性を自動生成（HTML/PHP/JSX/TSXの静的パスに対応）",
 
-  "command.generateAlt": "imgタグのALT属性を生成",
-  "command.generateVideoAriaLabel": "videoタグのaria-label属性を生成",
-  "command.clearApiKey": "Gemini APIキーをクリア（デバッグ用）",
+  "command.generateAlt": "画像の代替テキスト（ALT）を生成",
+  "command.generateVideoAriaLabel": "動画のUIラベル（ARIA-LABEL）または説明文を生成",
+  "command.clearApiKey": "Gemini APIキーをクリア",
 
   "config.geminiApiKey.description": "Gemini APIキー",
   "config.geminiApiKey.markdownDescription": "Gemini APIキー（[Google AI StudioでAPIキーを取得](https://aistudio.google.com/app/api-keys)）  \n\n**注意:** APIキーは安全に保存され、セキュリティのためドットで表示されます。  \n[APIキーをクリア](command:alt-generator.clearApiKey)",
@@ -15,35 +15,35 @@
   "config.geminiApiModel.enum.flash": "高速かつ高性能（推奨）",
   "config.geminiApiModel.enum.flash8b": "超高速処理",
 
-  "config.generationMode.description": "ALT生成モード",
-  "config.generationMode.markdownDescription": "生成されるALTが何を重視するかを設定します。",
+  "config.generationMode.description": "[ALT] 何を重視してテキストを生成するかを設定します",
+  "config.generationMode.markdownDescription": "[ALT] 何を重視してテキストを生成するかを設定します。",
   "config.generationMode.enum.seo": "SEO: 検索エンジン最適化（SEO）に焦点を当てたALTを生成します",
   "config.generationMode.enum.a11y": "A11Y: アクセシビリティ（A11Y）向上に焦点を当てたALTを生成します",
 
-  "config.insertionMode.description": "挿入モード",
-  "config.insertionMode.markdownDescription": "生成されたテキスト（ALT/ARIA）を、どのように挿入するかを設定します。",
+  "config.insertionMode.description": "生成されたテキストを、どのように挿入するかを設定します",
+  "config.insertionMode.markdownDescription": "生成されたテキストを、どのように挿入するかを設定します。",
   "config.insertionMode.enum.auto": "自動: 生成されたテキストを自動で挿入します",
   "config.insertionMode.enum.confirm": "手動: 生成されたテキストの内容を確認した後に手動で挿入します",
 
-  "config.outputLanguage.description": "出力言語",
+  "config.outputLanguage.description": "生成するテキストの言語を設定します",
 
   "config.decorativeKeywords.description": "装飾画像キーワード",
   "config.decorativeKeywords.markdownDescription": "ファイル名にこれらのキーワードが含まれている場合、装飾目的と判定し、ALTを空（`alt=\"\"`）に設定します。",
 
-  "config.contextEnabled.description": "周辺テキストを分析",
-  "config.contextEnabled.markdownDescription": "画像や動画の周辺にあるテキストを読み込み、その文脈を理解してテキスト（ALT/ARIA）を生成します。スクリーンリーダーが同じ情報を二重に読み上げるのを防ぎ、ユーザー体験を向上します。  \n\n**注意:**  \nこの機能を使用すると、API使用量が増加します。",
+  "config.contextEnabled.description": "imgタグやvideoタグ周辺の情報を分析し、文脈に合った、より適切なテキストを生成します",
+  "config.contextEnabled.markdownDescription": "imgタグやvideoタグ周辺の情報を分析し、文脈に合った、より適切なテキストを生成します。スクリーンリーダーが同じ情報を二重に読み上げるのを防ぎ、ユーザー体験を向上します。  \n\n**注意:** この機能を使用すると、API使用量が増加します。",
 
-  "config.contextRange.description": "コンテキスト検索範囲",
-  "config.contextRange.markdownDescription": "「コンテキスト分析」利用時、画像や動画の周囲のどこまでテキストを読み込むかを設定します。",
+  "config.contextRange.description": "コンテキスト分析に利用するテキストの広さを設定します。広げると精度が向上します",
+  "config.contextRange.markdownDescription": "コンテキスト分析に利用するテキストの広さを設定します。広げると精度が向上します。",
   "config.contextRange.enum.narrow": "狭い: ごく近い要素のテキストのみ。コスト・速度重視。",
   "config.contextRange.enum.standard": "標準: ある程度の周辺テキストを含める。バランス重視。",
   "config.contextRange.enum.wide": "広い: 広範囲のテキストから詳細な文脈を理解。品質重視。",
 
-  "config.videoDescriptionLength.description": "動画説明の長さ",
-  "config.videoDescriptionLength.markdownDescription": "生成される動画の説明テキストの詳細レベルを設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください。",
+  "config.videoDescriptionLength.description": "[ARIA-LABEL] 生成されるテキストの詳細度を設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください",
+  "config.videoDescriptionLength.markdownDescription": "[ARIA-LABEL] 生成されるテキストの詳細度を設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください。",
   "config.videoDescriptionLength.enum.standard": "標準: 動画の目的や機能を説明する短いaria-labelを生成します。",
   "config.videoDescriptionLength.enum.detailed": "詳細: 動画の視覚的な内容を含む、より詳しいテキストを生成します。",
 
   "config.customPromptsPath.description": "カスタムプロンプトファイルパス",
-  "config.customPromptsPath.markdownDescription": "カスタムプロンプトJSONファイルへのパス（ワークスペースルートからの相対パス）  \n\nカスタムプロンプトはデフォルトプロンプトを上書きします。ファイルが存在しない場合はデフォルトプロンプトが使用されます。  \n\n**例:** `.vscode/alt-prompts.json`"
+  "config.customPromptsPath.markdownDescription": "カスタムプロンプトJSONファイルへのパス（ワークスペースルートからの相対パス）  \n\nカスタムプロンプトはデフォルトプロンプトを上書きします。ファイルが存在しない場合はデフォルトプロンプトが使用されます。  \n\n**例:** `.vscode/custom-prompts.json`"
 }

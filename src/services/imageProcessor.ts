@@ -18,7 +18,7 @@ import { API_CONFIG, SPECIAL_KEYWORDS } from '../constants';
 /**
  * Tag information extracted from document
  */
-export interface TagInfo {
+interface TagInfo {
     selectedText: string;
     actualSelection: vscode.Selection;
     imageSrc: string;
@@ -29,7 +29,7 @@ export interface TagInfo {
 /**
  * Image data loaded from file or URL
  */
-export interface ImageData {
+interface ImageData {
     base64Image: string;
     mimeType: string;
 }
@@ -37,7 +37,7 @@ export interface ImageData {
 /**
  * Result of ALT text generation
  */
-export interface AltTextResult {
+interface AltTextResult {
     selection: vscode.Selection;
     altText: string;
     newText: string;
@@ -48,7 +48,7 @@ export interface AltTextResult {
 /**
  * Extract tag information from selection
  */
-export async function extractTagInfo(
+async function extractTagInfo(
     editor: vscode.TextEditor,
     selection: vscode.Selection
 ): Promise<TagInfo | null> {
@@ -146,7 +146,7 @@ export async function extractTagInfo(
 /**
  * Check if image is decorative based on filename
  */
-export function isDecorativeImage(imageFileName: string): boolean {
+function isDecorativeImage(imageFileName: string): boolean {
     const config = vscode.workspace.getConfiguration('altGenGemini');
     const decorativeKeywords = config.get<string[]>('decorativeKeywords', ['icon-', 'bg-', 'deco-']);
 
@@ -158,7 +158,7 @@ export function isDecorativeImage(imageFileName: string): boolean {
 /**
  * Load image data from file or URL
  */
-export async function loadImageData(
+async function loadImageData(
     imageSrc: string,
     editor: vscode.TextEditor
 ): Promise<ImageData | null> {
@@ -236,7 +236,7 @@ export async function loadImageData(
 /**
  * Generate decorative ALT text (empty alt="")
  */
-export function generateDecorativeAlt(
+function generateDecorativeAlt(
     tagInfo: TagInfo,
     insertionMode: string
 ): { newText: string; altText: string } {
@@ -260,12 +260,13 @@ export function generateDecorativeAlt(
 /**
  * Apply generated ALT text to tag
  */
-export function applyAltTextToTag(
+function applyAltTextToTag(
     selectedText: string,
     altText: string,
     tagType: 'img' | 'Image'
 ): string {
-    const safeAltText = escapeHtml(altText);
+    // Don't escape empty strings to avoid alt="&quot;&quot;"
+    const safeAltText = altText === '' ? '' : escapeHtml(altText);
     const hasAlt = /alt=["'{][^"'}]*["'}]/.test(selectedText);
 
     if (hasAlt) {
@@ -303,12 +304,19 @@ export async function processSingleImageTag(
     // Update progress
     if (progress && typeof processedCount === 'number' && typeof totalCount === 'number') {
         const message = totalCount === 1
-            ? tagInfo.imageFileName
+            ? `[IMG] ${tagInfo.imageFileName}`
             : formatMessage('{0} {1}/{2} - {3}', '[IMG]', processedCount + 1, totalCount, tagInfo.imageFileName);
-        progress.report({
-            message,
-            increment: (100 / totalCount)
-        });
+
+        // For single image, don't specify increment to show indeterminate animation
+        // For multiple images, use increment to show progress percentage
+        if (totalCount === 1) {
+            progress.report({ message });
+        } else {
+            progress.report({
+                message,
+                increment: (100 / totalCount)
+            });
+        }
     }
 
     // Check if decorative image
@@ -318,11 +326,11 @@ export async function processSingleImageTag(
         if (insertionMode === 'auto') {
             const success = await safeEditDocument(editor, tagInfo.actualSelection, newText);
             if (success) {
-                vscode.window.showInformationMessage('🎨 ALT: Decorative image (alt="")');
+                vscode.window.showInformationMessage(formatMessage('🎨 Decorative image detected (filename: {0}) → alt=""', tagInfo.imageFileName));
             }
             return {
                 selection,
-                altText,
+                altText: formatMessage('Decorative image (filename: {0}) → alt=""', tagInfo.imageFileName),
                 newText,
                 actualSelection: tagInfo.actualSelection,
                 success: true
@@ -330,7 +338,7 @@ export async function processSingleImageTag(
         } else {
             return {
                 selection,
-                altText,
+                altText: formatMessage('Decorative image (filename: {0}) → alt=""', tagInfo.imageFileName),
                 newText,
                 actualSelection: tagInfo.actualSelection,
                 success: true
@@ -391,18 +399,24 @@ export async function processSingleImageTag(
             return;
         }
 
-        // Handle DECORATIVE response
-        if (altText.trim() === SPECIAL_KEYWORDS.DECORATIVE) {
+        // Handle DECORATIVE response or empty string literal from API
+        const trimmedAlt = altText.trim();
+        if (trimmedAlt === SPECIAL_KEYWORDS.DECORATIVE || trimmedAlt === '""' || trimmedAlt === '') {
             const { newText, altText: decorativeAlt } = generateDecorativeAlt(tagInfo, insertionMode || 'auto');
+
+            // Determine the reason for empty alt
+            const reason = trimmedAlt === SPECIAL_KEYWORDS.DECORATIVE
+                ? 'Already described by surrounding text'
+                : 'Decorative image (no meaningful content)';
 
             if (insertionMode === 'auto') {
                 const success = await safeEditDocument(editor, tagInfo.actualSelection, newText);
                 if (success) {
-                    vscode.window.showInformationMessage('📝 ALT: Already described by surrounding text (alt="")');
+                    vscode.window.showInformationMessage(formatMessage('📝 {0} → alt=""', reason));
                 }
                 return {
                     selection,
-                    altText: 'Already described by surrounding text',
+                    altText: formatMessage('{0} → alt=""', reason),
                     newText,
                     actualSelection: tagInfo.actualSelection,
                     success: true
@@ -410,7 +424,7 @@ export async function processSingleImageTag(
             } else {
                 return {
                     selection,
-                    altText: 'Already described by surrounding text (alt="")',
+                    altText: formatMessage('{0} → alt=""', reason),
                     newText,
                     actualSelection: tagInfo.actualSelection,
                     success: true

@@ -11,11 +11,6 @@ import { CONTEXT_RANGE_VALUES } from '../constants';
 export type InsertionMode = 'auto' | 'confirm';
 
 /**
- * Valid generation modes
- */
-export type GenerationMode = 'SEO' | 'A11Y';
-
-/**
  * Get output language for ALT text generation
  * Returns 'ja' for Japanese or 'en' for English
  */
@@ -53,22 +48,6 @@ export function getInsertionMode(): InsertionMode {
     if (mode !== 'auto' && mode !== 'confirm') {
         console.warn(`[ALT Generator] Invalid insertionMode: ${mode}, using 'auto'`);
         return 'auto';
-    }
-
-    return mode;
-}
-
-/**
- * Get generation mode with type safety and validation
- * Returns 'SEO' or 'A11Y', defaults to 'SEO' for invalid values
- */
-export function getGenerationMode(): GenerationMode {
-    const config = vscode.workspace.getConfiguration('altGenGemini');
-    const mode = config.get<string>('generationMode', 'SEO');
-
-    if (mode !== 'SEO' && mode !== 'A11Y') {
-        console.warn(`[ALT Generator] Invalid generationMode: ${mode}, using 'SEO'`);
-        return 'SEO';
     }
 
     return mode;

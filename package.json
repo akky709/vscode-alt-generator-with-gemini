@@ -4,11 +4,28 @@
   "description": "%description%",
   "version": "1.0.0",
   "publisher": "akky",
+  "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/akky709/vscode-alt-generator-with-gemini"
   },
+  "bugs": {
+    "url": "https://github.com/akky709/vscode-alt-generator-with-gemini/issues"
+  },
+  "homepage": "https://note.com/akky709",
+  "keywords": [
+    "alt",
+    "alt-text",
+    "accessibility",
+    "a11y",
+    "seo",
+    "gemini",
+    "ai",
+    "image",
+    "video",
+    "aria-label"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -197,7 +214,7 @@
         "altGenGemini.customPromptsPath": {
           "order": 9,
           "type": "string",
-          "default": ".vscode/alt-prompts.json",
+          "default": ".vscode/custom-prompts.json",
           "description": "%config.customPromptsPath.description%",
           "markdownDescription": "%config.customPromptsPath.markdownDescription%"
         }

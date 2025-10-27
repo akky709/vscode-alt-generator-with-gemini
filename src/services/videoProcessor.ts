@@ -17,7 +17,7 @@ import { API_CONFIG, SPECIAL_KEYWORDS } from '../constants';
 /**
  * Video tag information
  */
-export interface VideoTagInfo {
+interface VideoTagInfo {
     selectedText: string;
     actualSelection: vscode.Selection;
     videoSrc: string;
@@ -27,7 +27,7 @@ export interface VideoTagInfo {
 /**
  * Video data loaded from file
  */
-export interface VideoData {
+interface VideoData {
     base64Video: string;
     mimeType: string;
     fileSizeMB: number;
@@ -36,16 +36,17 @@ export interface VideoData {
 /**
  * Result of aria-label generation
  */
-export interface AriaLabelResult {
+interface AriaLabelResult {
     newText: string;
     ariaLabel: string;
+    actualSelection: vscode.Selection;
     success: boolean;
 }
 
 /**
  * Extract video tag information from selection
  */
-export async function extractVideoTagInfo(
+async function extractVideoTagInfo(
     editor: vscode.TextEditor,
     selection: vscode.Selection
 ): Promise<VideoTagInfo | null> {
@@ -81,9 +82,13 @@ export async function extractVideoTagInfo(
             }
         }
 
+        // Get the start position (beginning of the line to include indentation)
         const startPos = document.positionAt(videoStartIndex);
+        const lineStartPos = new vscode.Position(startPos.line, 0);
         const endPos = document.positionAt(endIndex);
-        actualSelection = new vscode.Selection(startPos, endPos);
+
+        // Create selection from line start to tag end for proper indentation handling
+        actualSelection = new vscode.Selection(lineStartPos, endPos);
         selectedText = document.getText(actualSelection);
     }
 
@@ -113,7 +118,7 @@ export async function extractVideoTagInfo(
 /**
  * Load video data from file
  */
-export async function loadVideoData(
+async function loadVideoData(
     videoSrc: string,
     editor: vscode.TextEditor
 ): Promise<VideoData | null> {
@@ -169,7 +174,7 @@ export async function loadVideoData(
 /**
  * Apply aria-label to video tag
  */
-export function applyAriaLabelToTag(
+function applyAriaLabelToTag(
     selectedText: string,
     ariaLabel: string
 ): string {
@@ -193,12 +198,18 @@ export async function processSingleVideoTag(
     selection: vscode.Selection,
     token?: vscode.CancellationToken,
     insertionMode?: string,
-    cachedSurroundingText?: string
+    cachedSurroundingText?: string,
+    progress?: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<AriaLabelResult | void> {
     // Extract video tag information
     const videoTagInfo = await extractVideoTagInfo(editor, selection);
     if (!videoTagInfo) {
         return;
+    }
+
+    // Update progress with filename
+    if (progress) {
+        progress.report({ message: `[VIDEO] ${videoTagInfo.videoFileName}` });
     }
 
     // Load video data
@@ -261,6 +272,7 @@ export async function processSingleVideoTag(
         return {
             newText: videoTagInfo.selectedText,
             ariaLabel: 'Already described by surrounding text (not added)',
+            actualSelection: videoTagInfo.actualSelection,
             success: true
         };
     }
@@ -268,17 +280,25 @@ export async function processSingleVideoTag(
     // Handle detailed mode - output as comment (format based on file type)
     if (videoDescriptionLength === 'detailed') {
         const comment = getCommentFormat(editor.document.fileName, `Video description: ${description}`);
-        const newText = `${comment}\n${videoTagInfo.selectedText}`;
+
+        // Get indentation from the selected text (which includes the line start)
+        const indentMatch = videoTagInfo.selectedText.match(/^(\s*)/);
+        const indentation = indentMatch ? indentMatch[1] : '';
+
+        // Remove any existing indentation from selectedText to get just the video tag
+        const videoTagWithoutIndent = videoTagInfo.selectedText.trimStart();
+
+        // Add comment with same indentation, then video tag on next line with same indentation
+        const newText = `${indentation}${comment}\n${indentation}${videoTagWithoutIndent}`;
 
         if (insertionMode === 'auto') {
             const success = await safeEditDocument(editor, videoTagInfo.actualSelection, newText);
             if (success) {
                 vscode.window.showInformationMessage(formatMessage('✅ Video description added as comment: {0}', description));
             }
-            return { newText, ariaLabel: description, success: true };
-        } else {
-            return { newText, ariaLabel: description, success: true };
         }
+
+        return { newText, ariaLabel: description, actualSelection: videoTagInfo.actualSelection, success: true };
     }
 
     // Standard mode - Apply aria-label
@@ -289,8 +309,8 @@ export async function processSingleVideoTag(
         if (success) {
             vscode.window.showInformationMessage(formatMessage('✅ aria-label: {0}', description));
         }
-        return { newText, ariaLabel: description, success: true };
+        return { newText, ariaLabel: description, actualSelection: videoTagInfo.actualSelection, success: true };
     } else {
-        return { newText, ariaLabel: description, success: true };
+        return { newText, ariaLabel: description, actualSelection: videoTagInfo.actualSelection, success: true };
     }
 }

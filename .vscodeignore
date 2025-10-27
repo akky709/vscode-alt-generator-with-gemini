@@ -1,0 +1,44 @@
+# VSCode拡張機能のパッケージから除外するファイル
+
+# Development files
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+.gitattributes
+
+# Build and configuration files
+tsconfig.json
+.eslintrc.json
+**/*.ts
+**/*.map
+
+# Test files
+**/test/**
+**/.eslintrc.json
+
+# Documentation (already in README.md)
+.editorconfig
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependencies (only bundled dependencies are needed)
+node_modules/**
+!node_modules/node-fetch/**
+!node_modules/whatwg-url/**
+!node_modules/tr46/**
+!node_modules/webidl-conversions/**
+
+# Git
+.git/**
+.github/**
+
+# npm
+.npmignore
+npm-debug.log
+yarn-error.log
+
+# User-specific files (exclude actual config, but include example)
+.vscode/alt-prompts.json

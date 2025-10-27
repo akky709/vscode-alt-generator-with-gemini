@@ -10,6 +10,7 @@ import { CancellationError, NetworkError } from '../utils/errors';
 import { handleHttpError, handleContentBlocked, validateResponseStructure, isRetryableError } from '../utils/errorHandler';
 import { API_CONFIG, JSON_FORMATTING, CHAR_CONSTRAINTS } from '../constants';
 
+
 /**
  * Gemini API response structure
  * Defines the expected JSON structure from Gemini API generateContent endpoint
@@ -25,6 +26,72 @@ interface GeminiResponse {
     promptFeedback?: {
         blockReason?: string;
     };
+}
+
+/**
+ * Fetch from Gemini API with error handling
+ */
+async function fetchGeminiAPI(
+    url: string,
+    apiKey: string,
+    requestBody: object,
+    token?: vscode.CancellationToken
+): Promise<Response> {
+    if (token?.isCancellationRequested) {
+        throw new CancellationError();
+    }
+
+    try {
+        return await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify(requestBody)
+        });
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new NetworkError(
+            'Failed to connect to Gemini API.\n\n' +
+            'Possible causes:\n' +
+            '1. No internet connection\n' +
+            '2. Network firewall blocking the request\n' +
+            '3. DNS resolution failed\n\n' +
+            `Error details: ${errorMessage}`
+        );
+    }
+}
+
+/**
+ * Validate Gemini API response and extract data
+ */
+async function validateGeminiResponse(
+    response: Response,
+    contentType: 'image' | 'video',
+    token?: vscode.CancellationToken
+): Promise<GeminiResponse> {
+    if (token?.isCancellationRequested) {
+        throw new CancellationError();
+    }
+
+    if (!response.ok) {
+        await handleHttpError(response);
+    }
+
+    const data: unknown = await response.json();
+
+    // Check for content blocked
+    if (typeof data === 'object' && data !== null && 'promptFeedback' in data) {
+        const dataObj = data as { promptFeedback?: { blockReason?: string } };
+        if (dataObj.promptFeedback?.blockReason) {
+            console.error('API blocked the request:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
+            handleContentBlocked(dataObj.promptFeedback.blockReason, contentType);
+        }
+    }
+
+    validateResponseStructure(data);
+    return data as GeminiResponse;
 }
 
 /**
@@ -70,6 +137,15 @@ export async function generateAltText(
         });
     }
 
+    // デバッグ: 送信するプロンプトをコンソールに表示
+    console.log('[ALT Generator] ========================================');
+    console.log('[ALT Generator] Prompt sent to Gemini API (Image):');
+    console.log('[ALT Generator] Mode:', mode);
+    console.log('[ALT Generator] Model:', model);
+    console.log('[ALT Generator] ========================================');
+    console.log(prompt);
+    console.log('[ALT Generator] ========================================');
+
     const requestBody = {
         contents: [{
             parts: [
@@ -86,61 +162,8 @@ export async function generateAltText(
         }]
     };
 
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new CancellationError();
-    }
-
-    let response: Response;
-    try {
-        response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': apiKey
-            },
-            body: JSON.stringify(requestBody)
-        });
-    } catch (error: unknown) {
-        // Network errors (connection failed, DNS errors, etc.)
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new NetworkError(
-            'Failed to connect to Gemini API.\n\n' +
-            'Possible causes:\n' +
-            '1. No internet connection\n' +
-            '2. Network firewall blocking the request\n' +
-            '3. DNS resolution failed\n\n' +
-            `Error details: ${errorMessage}`
-        );
-    }
-
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new CancellationError();
-    }
-
-    // Handle HTTP errors
-    if (!response.ok) {
-        await handleHttpError(response);
-    }
-
-    const data: unknown = await response.json();
-
-    // Check for content blocked by safety filters
-    // Type guard for promptFeedback
-    if (typeof data === 'object' && data !== null && 'promptFeedback' in data) {
-        const dataObj = data as { promptFeedback?: { blockReason?: string } };
-        if (dataObj.promptFeedback?.blockReason) {
-            console.error('API blocked the request:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
-            handleContentBlocked(dataObj.promptFeedback.blockReason, 'image');
-        }
-    }
-
-    // Validate response structure
-    validateResponseStructure(data);
-
-    // After validation, we can safely access the response properties with proper typing
-    const validatedData = data as GeminiResponse;
+    const response = await fetchGeminiAPI(url, apiKey, requestBody, token);
+    const validatedData = await validateGeminiResponse(response, 'image', token);
     const altText = validatedData.candidates[0].content.parts[0].text.trim();
 
     return altText;
@@ -174,6 +197,15 @@ export async function generateVideoAriaLabel(
         mode
     });
 
+    // デバッグ: 送信するプロンプトをコンソールに表示
+    console.log('[ALT Generator] ========================================');
+    console.log('[ALT Generator] Prompt sent to Gemini API (Video):');
+    console.log('[ALT Generator] Mode:', mode);
+    console.log('[ALT Generator] Model:', model);
+    console.log('[ALT Generator] ========================================');
+    console.log(prompt);
+    console.log('[ALT Generator] ========================================');
+
     const requestBody = {
         contents: [{
             parts: [
@@ -190,61 +222,8 @@ export async function generateVideoAriaLabel(
         }]
     };
 
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new CancellationError();
-    }
-
-    let response: Response;
-    try {
-        response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-goog-api-key': apiKey
-            },
-            body: JSON.stringify(requestBody)
-        });
-    } catch (error: unknown) {
-        // Network errors (connection failed, DNS errors, etc.)
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new NetworkError(
-            'Failed to connect to Gemini API.\n\n' +
-            'Possible causes:\n' +
-            '1. No internet connection\n' +
-            '2. Network firewall blocking the request\n' +
-            '3. DNS resolution failed\n\n' +
-            `Error details: ${errorMessage}`
-        );
-    }
-
-    // キャンセルチェック
-    if (token?.isCancellationRequested) {
-        throw new CancellationError();
-    }
-
-    // Handle HTTP errors
-    if (!response.ok) {
-        await handleHttpError(response);
-    }
-
-    const data: unknown = await response.json();
-
-    // Check for content blocked by safety filters
-    // Type guard for promptFeedback
-    if (typeof data === 'object' && data !== null && 'promptFeedback' in data) {
-        const dataObj = data as { promptFeedback?: { blockReason?: string } };
-        if (dataObj.promptFeedback?.blockReason) {
-            console.error('API blocked the request:', JSON.stringify(data, null, JSON_FORMATTING.INDENT_SPACES));
-            handleContentBlocked(dataObj.promptFeedback.blockReason, 'video');
-        }
-    }
-
-    // Validate response structure
-    validateResponseStructure(data);
-
-    // After validation, we can safely access the response properties with proper typing
-    const validatedData = data as GeminiResponse;
+    const response = await fetchGeminiAPI(url, apiKey, requestBody, token);
+    const validatedData = await validateGeminiResponse(response, 'video', token);
     const ariaLabel = validatedData.candidates[0].content.parts[0].text.trim();
 
     return ariaLabel;

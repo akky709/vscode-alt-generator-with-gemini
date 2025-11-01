@@ -9,14 +9,8 @@
   "config.geminiApiKey.description": "Gemini API Key",
   "config.geminiApiKey.markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))  \n\n**Note:** The API key is stored securely and displayed as dots for security.  \n[Clear API Key](command:alt-generator.clearApiKey)",
 
-  "config.geminiApiModel.description": "Gemini API Model",
-  "config.geminiApiModel.markdownDescription": "Gemini API model to use",
-  "config.geminiApiModel.enum.pro": "Most advanced model for complex tasks",
-  "config.geminiApiModel.enum.flash": "Fast and intelligent (recommended)",
-  "config.geminiApiModel.enum.flash8b": "Ultra-fast processing",
-
-  "config.generationMode.description": "[ALT] Set what to prioritize when generating text",
-  "config.generationMode.markdownDescription": "[ALT] Set what to prioritize when generating text.",
+  "config.generationMode.description": "[Image] Set what to prioritize when generating ALT text",
+  "config.generationMode.markdownDescription": "[Image] Set what to prioritize when generating ALT text.",
   "config.generationMode.enum.seo": "SEO: Generate ALT text focused on search engine optimization (SEO)",
   "config.generationMode.enum.a11y": "A11Y: Generate ALT text focused on accessibility (A11Y) improvement",
 
@@ -30,20 +24,14 @@
   "config.decorativeKeywords.description": "Decorative Image Keywords",
   "config.decorativeKeywords.markdownDescription": "If the filename contains these keywords, it will be identified as decorative and the ALT will be set to empty (`alt=\"\"`).",
 
-  "config.contextEnabled.description": "Analyze information around img and video tags to generate more appropriate text that fits the context",
-  "config.contextEnabled.markdownDescription": "Analyze information around img and video tags to generate more appropriate text that fits the context. This prevents screen readers from reading the same information twice, improving user experience.  \n\n**Note:** Enabling this feature will increase API usage.",
+  "config.contextAnalysisEnabled.description": "Analyze surrounding text to prevent redundancy",
+  "config.contextAnalysisEnabled.markdownDescription": "Analyze surrounding text of images and videos. If already described by surrounding text, automatically sets `alt=\"\"` to prevent duplicate descriptions for screen readers.",
 
-  "config.contextRange.description": "Set the width of text used for context analysis. Wider range improves accuracy",
-  "config.contextRange.markdownDescription": "Set the width of text used for context analysis. Wider range improves accuracy.",
-  "config.contextRange.enum.narrow": "Narrow: Only text from very nearby elements. Cost and speed priority.",
-  "config.contextRange.enum.standard": "Standard: Includes surrounding text to some extent. Balanced priority.",
-  "config.contextRange.enum.wide": "Wide: Understands detailed context from a wide range of text. Quality priority.",
-
-  "config.videoDescriptionLength.description": "[ARIA-LABEL] Set the detail level of generated text. Use detailed mode for creating text manuscripts for audio descriptions, etc",
-  "config.videoDescriptionLength.markdownDescription": "[ARIA-LABEL] Set the detail level of generated text. Use detailed mode for creating text manuscripts for audio descriptions, etc.",
+  "config.videoDescriptionLength.description": "[Video] Set the detail level of generated text. Use detailed mode for creating text manuscripts for audio descriptions, etc",
+  "config.videoDescriptionLength.markdownDescription": "[Video] Set the detail level of generated text. Use detailed mode for creating text manuscripts for audio descriptions, etc.",
   "config.videoDescriptionLength.enum.standard": "Standard: Generate a short aria-label that describes the video's purpose or function.",
   "config.videoDescriptionLength.enum.detailed": "Detailed: Generate more detailed text including the visual content of the video.",
 
-  "config.customPromptsPath.description": "Custom Prompts File Path",
-  "config.customPromptsPath.markdownDescription": "Path to custom prompts JSON file (relative to workspace root).  \n\nCustom prompts override default prompts. If the file doesn't exist, default prompts are used.  \n\n**Example:** `.vscode/custom-prompts.json`"
+  "config.customPromptsPath.description": "Custom Settings File Path",
+  "config.customPromptsPath.markdownDescription": "Path to a JSON file containing detailed settings such as Gemini AI model and prompts. Specify as a relative path from the workspace root.  \n\n**Example:** `.vscode/alt-generator.settings.json`  \n\n**Important:** Specifying this file will override the ALT text generation settings with the file's contents. Settings not specified in the file, or if the file is not found, will use the extension's default settings."
 }

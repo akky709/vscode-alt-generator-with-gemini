@@ -8,6 +8,7 @@ import { TAG_DETECTION } from '../constants';
 
 /**
  * Detect tag type at cursor position
+ * Only detects if cursor is actually inside a tag (between < and >)
  */
 export function detectTagType(editor: vscode.TextEditor, selection: vscode.Selection): 'img' | 'video' | null {
     const document = editor.document;
@@ -16,23 +17,54 @@ export function detectTagType(editor: vscode.TextEditor, selection: vscode.Selec
 
     // カーソル位置から後方検索してタグの開始を見つける
     let startIndex = offset;
-    while (startIndex > 0 && text[startIndex] !== '<') {
+    let foundOpenBracket = false;
+    while (startIndex > 0) {
+        if (text[startIndex] === '<') {
+            foundOpenBracket = true;
+            break;
+        } else if (text[startIndex] === '>') {
+            // カーソルの前に閉じタグがある = カーソルはタグの外側
+            return null;
+        }
         startIndex--;
+    }
+
+    if (!foundOpenBracket) {
+        return null;
     }
 
     // 前方検索してタグの終了を見つける
     let endIndex = offset;
-    while (endIndex < text.length && text[endIndex] !== '>') {
+    let foundCloseBracket = false;
+    while (endIndex < text.length) {
+        if (text[endIndex] === '>') {
+            foundCloseBracket = true;
+            break;
+        } else if (text[endIndex] === '<') {
+            // カーソルの後に開きタグがある = カーソルはタグの外側
+            return null;
+        }
         endIndex++;
+    }
+
+    if (!foundCloseBracket) {
+        return null;
+    }
+
+    // カーソルがタグの範囲内にあることを確認
+    // startIndex < offset <= endIndex であることが保証されている
+    if (offset < startIndex || offset > endIndex) {
+        return null;
     }
 
     // タグテキストを取得
     const tagText = text.substring(startIndex, endIndex + 1);
 
     // タグタイプを判定
-    if (/<img\s/i.test(tagText) || /<Image\s/i.test(tagText)) {
+    if (/<img[\s>]/i.test(tagText) || /<Image[\s>]/i.test(tagText)) {
         return 'img';
-    } else if (/<video\s/i.test(tagText) || /<source\s/i.test(tagText)) {
+    } else if (/<video[\s>]/i.test(tagText) || /<source[\s>]/i.test(tagText) || /<\/video>/i.test(tagText)) {
+        // videoタグの開始タグ、sourceタグ、またはvideoの閉じタグ
         return 'video';
     }
 
@@ -78,7 +110,8 @@ export function detectAllTags(
     }
 
     // videoタグを検出（より安全な2パスアプローチ）
-    const videoOpenRegex = /<video\s[^>]{0,500}>/gi;
+    // 属性があってもなくても検出できるように[\s>]を使用
+    const videoOpenRegex = /<video[\s>][^>]{0,500}?>/gi;
     while ((match = videoOpenRegex.exec(selectedText)) !== null) {
         if (Date.now() - startTime > TAG_DETECTION.SEARCH_TIMEOUT_MS) {
             vscode.window.showWarningMessage('Tag detection timeout - text may be too complex');
@@ -109,6 +142,59 @@ export function detectAllTags(
             document.positionAt(startOffset + tagEnd)
         );
         tags.push({ type: 'video', range, text: selectedText.substring(openStart, tagEnd) });
+    }
+
+    // sourceタグを検出した場合、親のvideoタグ全体を検索
+    const sourceRegex = /<source[\s>][^>]{0,500}?>/gi;
+    const fullText = document.getText();
+
+    while ((match = sourceRegex.exec(selectedText)) !== null) {
+        if (Date.now() - startTime > TAG_DETECTION.SEARCH_TIMEOUT_MS) {
+            vscode.window.showWarningMessage('Tag detection timeout - text may be too complex');
+            break;
+        }
+
+        // sourceタグのドキュメント内での絶対位置
+        const sourcePosition = startOffset + match.index;
+
+        // 後方検索で<video>タグの開始を見つける
+        const videoStartIndex = fullText.lastIndexOf('<video', sourcePosition);
+        if (videoStartIndex === -1) {
+            continue; // 親のvideoタグが見つからない
+        }
+
+        // 前方検索で</video>タグの終了を見つける
+        let videoEndIndex = fullText.indexOf('</video>', sourcePosition);
+        if (videoEndIndex === -1) {
+            // 自己閉じvideoタグの場合
+            videoEndIndex = fullText.indexOf('/>', videoStartIndex);
+            if (videoEndIndex === -1) {
+                continue;
+            }
+            videoEndIndex += 2;
+        } else {
+            videoEndIndex += '</video>'.length;
+        }
+
+        // videoタグが既に検出されているかチェック
+        const videoRange = new vscode.Range(
+            document.positionAt(videoStartIndex),
+            document.positionAt(videoEndIndex)
+        );
+
+        const alreadyDetected = tags.some(tag =>
+            tag.type === 'video' &&
+            tag.range.start.isEqual(videoRange.start) &&
+            tag.range.end.isEqual(videoRange.end)
+        );
+
+        if (!alreadyDetected) {
+            tags.push({
+                type: 'video',
+                range: videoRange,
+                text: fullText.substring(videoStartIndex, videoEndIndex)
+            });
+        }
     }
 
     return tags;

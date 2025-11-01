@@ -62,15 +62,15 @@ export const SELECTION_THRESHOLDS = {
  */
 export const CHAR_CONSTRAINTS = {
     /** Standard length for English ALT text */
-    STANDARD_EN: '60 and 130 characters',
+    STANDARD_EN: '60-130 characters',
     /** Detailed length for English ALT text */
-    DETAILED_EN: '100 and 200 characters',
+    DETAILED_EN: '100-200 characters',
     /** Standard length for Japanese ALT text */
-    STANDARD_JA: '50 and 120 Japanese characters (full-width characters)',
+    STANDARD_JA: '50-120 Japanese characters (full-width characters)',
     /** Detailed length for Japanese ALT text */
-    DETAILED_JA: '100 and 200 Japanese characters (full-width characters)',
+    DETAILED_JA: '100-200 Japanese characters (full-width characters)',
     /** Default fallback constraint */
-    DEFAULT: '50 and 120 characters',
+    DEFAULT: '50-120 characters',
 } as const;
 
 /**
@@ -89,7 +89,7 @@ export const PROMPT_CONSTRAINTS = {
     /** Maximum words for video aria-label (standard mode) */
     MAX_VIDEO_ARIA_LABEL_WORDS: 10,
     /** Maximum words for detailed video description */
-    MAX_VIDEO_DETAILED_WORDS: 50,
+    MAX_VIDEO_DETAILED_WORDS: 100,
 } as const;
 
 /**

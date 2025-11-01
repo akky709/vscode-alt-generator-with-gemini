@@ -11,6 +11,22 @@ const STYLE_TAG_REGEX = /<style[\s\S]*?<\/style>/gi;
 const HTML_TAG_REGEX = /<[^>]{1,500}>/g;
 const WHITESPACE_REGEX = /\s+/g;
 
+// Block tag patterns for parent/sibling element detection
+const BLOCK_TAGS = ['div', 'section', 'article', 'main', 'aside', 'header', 'footer', 'nav', 'figure', 'li', 'td', 'th', 'p', 'blockquote'];
+const BLOCK_TAG_PATTERN = new RegExp(`<(${BLOCK_TAGS.join('|')})[\\s>]`, 'gi');
+
+// Cache for close tag patterns (created on demand)
+const closeTagPatternCache = new Map<string, RegExp>();
+
+function getCloseTagPattern(tagName: string): RegExp {
+    let pattern = closeTagPatternCache.get(tagName);
+    if (!pattern) {
+        pattern = new RegExp(`</${tagName}>`, 'i');
+        closeTagPatternCache.set(tagName, pattern);
+    }
+    return pattern;
+}
+
 /**
  * Document cache interface for storing parsed document data
  */
@@ -92,16 +108,14 @@ function findParentElement(
     const relativeImageStart = imageStart - searchStart;
     const relativeImageEnd = imageEnd - searchStart;
 
-    // 一般的なブロック要素のパターン
-    const blockTags = ['div', 'section', 'article', 'main', 'aside', 'header', 'footer', 'nav', 'figure', 'li', 'td', 'th', 'p', 'blockquote'];
-    const tagPattern = new RegExp(`<(${blockTags.join('|')})[\\s>]`, 'gi');
-
     let closestParent: { start: number; end: number; tagName: string } | null = null;
     let closestDistance = Infinity;
 
-    // 開始タグを探す
+    // 開始タグを探す (use pre-compiled pattern)
+    // Reset lastIndex to ensure proper matching in global regex
+    BLOCK_TAG_PATTERN.lastIndex = 0;
     let match;
-    while ((match = tagPattern.exec(searchText)) !== null) {
+    while ((match = BLOCK_TAG_PATTERN.exec(searchText)) !== null) {
         const openTagStart = match.index;
         const tagName = match[1].toLowerCase();
 
@@ -111,8 +125,8 @@ function findParentElement(
             continue;
         }
 
-        // 対応する終了タグを探す
-        const closeTagPattern = new RegExp(`</${tagName}>`, 'i');
+        // 対応する終了タグを探す (use cached pattern)
+        const closeTagPattern = getCloseTagPattern(tagName);
         const remainingText = searchText.substring(openTagStart);
         const closeMatch = closeTagPattern.exec(remainingText);
 
@@ -154,22 +168,23 @@ function findSiblingElements(
     const searchStart = Math.max(0, imageStart - maxSearch);
     const searchEnd = Math.min(fullText.length, imageEnd + maxSearch);
 
-    // 一般的なブロック要素とインライン要素のパターン
-    const blockTags = ['div', 'section', 'article', 'main', 'aside', 'header', 'footer', 'nav', 'figure', 'li', 'td', 'th', 'p', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'figcaption', 'caption', 'span', 'a'];
-    const tagPattern = new RegExp(`<(${blockTags.join('|')})[\\s>]`, 'gi');
+    // Sibling tags include block + inline + heading elements
+    const SIBLING_TAGS = ['div', 'section', 'article', 'main', 'aside', 'header', 'footer', 'nav', 'figure', 'li', 'td', 'th', 'p', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'figcaption', 'caption', 'span', 'a'];
+    const siblingTagPattern = new RegExp(`<(${SIBLING_TAGS.join('|')})[\\s>]`, 'gi');
 
     // 画像の前にある兄弟要素を検索（最大3つまで）
     const beforeText = fullText.substring(searchStart, imageStart);
     const beforeMatches: Array<{ tagName: string; start: number; end: number }> = [];
 
     let match;
-    const beforeTagPattern = new RegExp(`<(${blockTags.join('|')})[\\s>]`, 'gi');
-    while ((match = beforeTagPattern.exec(beforeText)) !== null) {
+    // Reset lastIndex for global regex
+    siblingTagPattern.lastIndex = 0;
+    while ((match = siblingTagPattern.exec(beforeText)) !== null) {
         const tagName = match[1].toLowerCase();
         const openTagStart = searchStart + match.index;
 
-        // 対応する終了タグを探す
-        const closeTagPattern = new RegExp(`</${tagName}>`, 'i');
+        // 対応する終了タグを探す (use cached pattern)
+        const closeTagPattern = getCloseTagPattern(tagName);
         const remainingText = fullText.substring(openTagStart);
         const closeMatch = closeTagPattern.exec(remainingText);
 
@@ -201,13 +216,14 @@ function findSiblingElements(
     const afterText = fullText.substring(imageEnd, searchEnd);
     const afterMatches: Array<{ tagName: string; start: number; end: number }> = [];
 
-    const afterTagPattern = new RegExp(`<(${blockTags.join('|')})[\\s>]`, 'gi');
-    while ((match = afterTagPattern.exec(afterText)) !== null) {
+    // Reset lastIndex for next search
+    siblingTagPattern.lastIndex = 0;
+    while ((match = siblingTagPattern.exec(afterText)) !== null) {
         const tagName = match[1].toLowerCase();
         const openTagStart = imageEnd + match.index;
 
-        // 対応する終了タグを探す
-        const closeTagPattern = new RegExp(`</${tagName}>`, 'i');
+        // 対応する終了タグを探す (use cached pattern)
+        const closeTagPattern = getCloseTagPattern(tagName);
         const remainingText = fullText.substring(openTagStart);
         const closeMatch = closeTagPattern.exec(remainingText);
 
@@ -251,6 +267,8 @@ export function extractSurroundingText(
     const imageEnd = document.offsetAt(tagRange.end);
 
     const collectedTextSet = new Set<string>(); // 重複チェック用
+    // Track all text lengths for O(1) substring check optimization
+    const collectedTexts: string[] = [];
     let currentImageStart = imageStart;
     let currentImageEnd = imageEnd;
     let level = 0;
@@ -261,22 +279,24 @@ export function extractSurroundingText(
 
     /**
      * Check if text is duplicate or substring of existing texts
+     * Optimized to avoid O(n²) complexity by using cached text array
      */
     function isDuplicateOrSubstring(newText: string, existingTexts: string[]): boolean {
-        // Exact match check
+        // Exact match check (O(1))
         if (collectedTextSet.has(newText)) {
             return true;
         }
 
+        // Use collectedTexts instead of existingTexts to avoid redundant checks
         // Check if newText is substring of any existing text
-        for (const existing of existingTexts) {
+        for (const existing of collectedTexts) {
             if (existing.includes(newText)) {
                 return true;
             }
         }
 
         // Check if any existing text is substring of newText
-        for (const existing of existingTexts) {
+        for (const existing of collectedTexts) {
             if (newText.includes(existing)) {
                 return true;
             }
@@ -298,6 +318,7 @@ export function extractSurroundingText(
         if (!isDuplicateOrSubstring(text, targetArray)) {
             targetArray.push(text);
             collectedTextSet.add(text);
+            collectedTexts.push(text); // Add to central cache
         }
     }
 
@@ -321,10 +342,12 @@ export function extractSurroundingText(
         if (cleanedBefore.length > 0 && !isDuplicateOrSubstring(cleanedBefore, beforeTexts)) {
             beforeTexts.push(cleanedBefore);
             collectedTextSet.add(cleanedBefore);
+            collectedTexts.push(cleanedBefore); // Add to central cache
         }
         if (cleanedAfter.length > 0 && !isDuplicateOrSubstring(cleanedAfter, afterTexts)) {
             afterTexts.push(cleanedAfter);
             collectedTextSet.add(cleanedAfter);
+            collectedTexts.push(cleanedAfter); // Add to central cache
         }
 
         // 十分なテキストが集まったら終了

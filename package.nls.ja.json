@@ -9,14 +9,8 @@
   "config.geminiApiKey.description": "Gemini APIキー",
   "config.geminiApiKey.markdownDescription": "Gemini APIキー（[Google AI StudioでAPIキーを取得](https://aistudio.google.com/app/api-keys)）  \n\n**注意:** APIキーは安全に保存され、セキュリティのためドットで表示されます。  \n[APIキーをクリア](command:alt-generator.clearApiKey)",
 
-  "config.geminiApiModel.description": "Gemini APIモデル",
-  "config.geminiApiModel.markdownDescription": "使用するGemini APIモデル",
-  "config.geminiApiModel.enum.pro": "複雑なタスクに最適な高度なモデル",
-  "config.geminiApiModel.enum.flash": "高速かつ高性能（推奨）",
-  "config.geminiApiModel.enum.flash8b": "超高速処理",
-
-  "config.generationMode.description": "[ALT] 何を重視してテキストを生成するかを設定します",
-  "config.generationMode.markdownDescription": "[ALT] 何を重視してテキストを生成するかを設定します。",
+  "config.generationMode.description": "[画像] 何を重視してALTを生成するかを設定します",
+  "config.generationMode.markdownDescription": "[画像] 何を重視してALTを生成するかを設定します。",
   "config.generationMode.enum.seo": "SEO: 検索エンジン最適化（SEO）に焦点を当てたALTを生成します",
   "config.generationMode.enum.a11y": "A11Y: アクセシビリティ（A11Y）向上に焦点を当てたALTを生成します",
 
@@ -30,20 +24,14 @@
   "config.decorativeKeywords.description": "装飾画像キーワード",
   "config.decorativeKeywords.markdownDescription": "ファイル名にこれらのキーワードが含まれている場合、装飾目的と判定し、ALTを空（`alt=\"\"`）に設定します。",
 
-  "config.contextEnabled.description": "imgタグやvideoタグ周辺の情報を分析し、文脈に合った、より適切なテキストを生成します",
-  "config.contextEnabled.markdownDescription": "imgタグやvideoタグ周辺の情報を分析し、文脈に合った、より適切なテキストを生成します。スクリーンリーダーが同じ情報を二重に読み上げるのを防ぎ、ユーザー体験を向上します。  \n\n**注意:** この機能を使用すると、API使用量が増加します。",
+  "config.contextAnalysisEnabled.description": "周辺テキストを分析して重複を防止",
+  "config.contextAnalysisEnabled.markdownDescription": "画像や動画の周辺テキストを分析します。既に周辺テキストで説明されている場合は、自動で `alt=\"\"` に設定し、スクリーンリーダーでの重複読み上げを防止します。",
 
-  "config.contextRange.description": "コンテキスト分析に利用するテキストの広さを設定します。広げると精度が向上します",
-  "config.contextRange.markdownDescription": "コンテキスト分析に利用するテキストの広さを設定します。広げると精度が向上します。",
-  "config.contextRange.enum.narrow": "狭い: ごく近い要素のテキストのみ。コスト・速度重視。",
-  "config.contextRange.enum.standard": "標準: ある程度の周辺テキストを含める。バランス重視。",
-  "config.contextRange.enum.wide": "広い: 広範囲のテキストから詳細な文脈を理解。品質重視。",
-
-  "config.videoDescriptionLength.description": "[ARIA-LABEL] 生成されるテキストの詳細度を設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください",
-  "config.videoDescriptionLength.markdownDescription": "[ARIA-LABEL] 生成されるテキストの詳細度を設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください。",
+  "config.videoDescriptionLength.description": "[動画] 生成するテキストの詳細度を設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください",
+  "config.videoDescriptionLength.markdownDescription": "[動画] 生成するテキストの詳細度を設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください。",
   "config.videoDescriptionLength.enum.standard": "標準: 動画の目的や機能を説明する短いaria-labelを生成します。",
   "config.videoDescriptionLength.enum.detailed": "詳細: 動画の視覚的な内容を含む、より詳しいテキストを生成します。",
 
-  "config.customPromptsPath.description": "カスタムプロンプトファイルパス",
-  "config.customPromptsPath.markdownDescription": "カスタムプロンプトJSONファイルへのパス（ワークスペースルートからの相対パス）  \n\nカスタムプロンプトはデフォルトプロンプトを上書きします。ファイルが存在しない場合はデフォルトプロンプトが使用されます。  \n\n**例:** `.vscode/custom-prompts.json`"
+  "config.customPromptsPath.description": "カスタム設定ファイルのパス",
+  "config.customPromptsPath.markdownDescription": "GeminiのAIモデルやプロンプトなど、詳細な設定を記述するJSONファイルへのパスです。ワークスペースルートからの相対パスで指定します。  \n\n**例:** `.vscode/alt-generator.settings.json`  \n\n**【重要】** このファイルを指定すると、ALTテキスト生成の設定が、ファイルの内容で上書きされます。ファイル内に記述がない設定項目や、ファイルが見つからない場合は、拡張機能のデフォルト設定が適用されます。"
 }

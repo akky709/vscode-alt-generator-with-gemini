@@ -35,18 +35,6 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "files": [
-    "out/**/*.js",
-    "images/**",
-    "README.md",
-    "LICENSE",
-    "package.nls.json",
-    "package.nls.ja.json",
-    "node_modules/node-fetch/**",
-    "node_modules/whatwg-url/**",
-    "node_modules/tr46/**",
-    "node_modules/webidl-conversions/**"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -73,30 +61,8 @@
           "markdownDescription": "%config.geminiApiKey.markdownDescription%",
           "editPresentation": "singlelineText"
         },
-        "altGenGemini.geminiApiModel": {
-          "order": 1,
-          "type": "string",
-          "default": "gemini-2.5-flash",
-          "enum": [
-            "gemini-2.5-pro",
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-8b"
-          ],
-          "enumDescriptions": [
-            "%config.geminiApiModel.enum.pro%",
-            "%config.geminiApiModel.enum.flash%",
-            "%config.geminiApiModel.enum.flash8b%"
-          ],
-          "enumItemLabels": [
-            "Gemini 2.5 Pro",
-            "Gemini 2.5 Flash",
-            "Gemini 2.5 Flash-Lite"
-          ],
-          "description": "%config.geminiApiModel.description%",
-          "markdownDescription": "%config.geminiApiModel.markdownDescription%"
-        },
         "altGenGemini.generationMode": {
-          "order": 2,
+          "order": 1,
           "type": "string",
           "default": "SEO",
           "enum": [
@@ -108,14 +74,14 @@
             "%config.generationMode.enum.a11y%"
           ],
           "enumItemLabels": [
-            "SEO",
-            "A11Y"
+            "Search Engine",
+            "Accessibility"
           ],
           "description": "%config.generationMode.description%",
           "markdownDescription": "%config.generationMode.markdownDescription%"
         },
         "altGenGemini.insertionMode": {
-          "order": 3,
+          "order": 2,
           "type": "string",
           "default": "confirm",
           "enum": [
@@ -134,7 +100,7 @@
           "markdownDescription": "%config.insertionMode.markdownDescription%"
         },
         "altGenGemini.outputLanguage": {
-          "order": 4,
+          "order": 3,
           "type": "string",
           "default": "auto",
           "enum": [
@@ -150,7 +116,7 @@
           "description": "%config.outputLanguage.description%"
         },
         "altGenGemini.decorativeKeywords": {
-          "order": 5,
+          "order": 4,
           "type": "array",
           "default": [
             "icon-",
@@ -163,37 +129,8 @@
           "description": "%config.decorativeKeywords.description%",
           "markdownDescription": "%config.decorativeKeywords.markdownDescription%"
         },
-        "altGenGemini.contextEnabled": {
-          "order": 6,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.contextEnabled.description%",
-          "markdownDescription": "%config.contextEnabled.markdownDescription%"
-        },
-        "altGenGemini.contextRange": {
-          "order": 7,
-          "type": "string",
-          "default": "standard",
-          "enum": [
-            "narrow",
-            "standard",
-            "wide"
-          ],
-          "enumDescriptions": [
-            "%config.contextRange.enum.narrow%",
-            "%config.contextRange.enum.standard%",
-            "%config.contextRange.enum.wide%"
-          ],
-          "enumItemLabels": [
-            "Narrow",
-            "Standard",
-            "Wide"
-          ],
-          "description": "%config.contextRange.description%",
-          "markdownDescription": "%config.contextRange.markdownDescription%"
-        },
         "altGenGemini.videoDescriptionLength": {
-          "order": 8,
+          "order": 5,
           "type": "string",
           "default": "standard",
           "enum": [
@@ -211,10 +148,17 @@
           "description": "%config.videoDescriptionLength.description%",
           "markdownDescription": "%config.videoDescriptionLength.markdownDescription%"
         },
+        "altGenGemini.contextAnalysisEnabled": {
+          "order": 6,
+          "type": "boolean",
+          "default": false,
+          "description": "%config.contextAnalysisEnabled.description%",
+          "markdownDescription": "%config.contextAnalysisEnabled.markdownDescription%"
+        },
         "altGenGemini.customPromptsPath": {
-          "order": 9,
+          "order": 7,
           "type": "string",
-          "default": ".vscode/custom-prompts.json",
+          "default": ".vscode/alt-generator.settings.json",
           "description": "%config.customPromptsPath.description%",
           "markdownDescription": "%config.customPromptsPath.markdownDescription%"
         }

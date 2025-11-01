@@ -7,12 +7,12 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { generateVideoAriaLabelWithRetry } from '../core/gemini';
+import { needsSurroundingText, getGeminiApiModel, loadCustomPrompts } from '../core/prompts';
 import { safeEditDocument, escapeHtml, sanitizeFilePath } from '../utils/security';
 import { getVideoMimeType, getCommentFormat } from '../utils/fileUtils';
 import { formatMessage, extractSurroundingText } from '../utils/textUtils';
-import { getContextRangeValue } from '../utils/config';
 import { detectStaticFileDirectory } from './frameworkDetector';
-import { API_CONFIG, SPECIAL_KEYWORDS } from '../constants';
+import { API_CONFIG, SPECIAL_KEYWORDS, CONTEXT_RANGE_VALUES } from '../constants';
 
 /**
  * Video tag information
@@ -226,20 +226,22 @@ export async function processSingleVideoTag(
     }
 
     const config = vscode.workspace.getConfiguration('altGenGemini');
-    const geminiModel = config.get<string>('geminiApiModel', API_CONFIG.DEFAULT_MODEL);
     const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard') as 'standard' | 'detailed';
 
+    // Load custom prompts once for all subsequent operations
+    const customPrompts = loadCustomPrompts();
+    const geminiModel = getGeminiApiModel(customPrompts);
+
     // Get surrounding text (use cached if available, otherwise extract)
+    // Only extract if custom prompts require it
     let surroundingText: string | undefined;
     if (cachedSurroundingText !== undefined) {
         // Use cached surrounding text for batch processing optimization
         surroundingText = cachedSurroundingText;
     } else {
-        // Extract surrounding text if not cached
-        const contextEnabled = config.get<boolean>('contextEnabled', true);
-        const contextRange = getContextRangeValue();
-
-        if (contextEnabled) {
+        // Extract surrounding text only if custom prompts contain {surroundingText} placeholder
+        if (needsSurroundingText('video', videoDescriptionLength, customPrompts)) {
+            const contextRange = CONTEXT_RANGE_VALUES.default; // Use default context range
             surroundingText = extractSurroundingText(editor.document, videoTagInfo.actualSelection, contextRange);
         }
     }

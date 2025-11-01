@@ -3,8 +3,8 @@ import * as vscode from 'vscode';
 // Utils
 import { safeEditDocument } from './utils/security';
 import { formatMessage } from './utils/textUtils';
-import { detectTagType, detectAllTags, extractImageFileName, extractVideoFileName } from './utils/tagUtils';
-import { getContextRangeValue, getInsertionMode } from './utils/config';
+import { detectTagType, detectAllTags } from './utils/tagUtils';
+import { getInsertionMode, clearOutputLanguageCache } from './utils/config';
 import { getUserFriendlyErrorMessage } from './utils/errorHandler';
 import { CancellationError } from './utils/errors';
 import { createContextCache } from './utils/contextGrouping';
@@ -13,8 +13,11 @@ import { createContextCache } from './utils/contextGrouping';
 import { processSingleImageTag } from './services/imageProcessor';
 import { processSingleVideoTag } from './services/videoProcessor';
 
+// Core
+import { needsSurroundingText } from './core/prompts';
+
 // Constants
-import { UI_MESSAGES, SELECTION_THRESHOLDS, MASKING, BATCH_PROCESSING } from './constants';
+import { SELECTION_THRESHOLDS, MASKING, BATCH_PROCESSING, CONTEXT_RANGE_VALUES } from './constants';
 
 export async function activate(context: vscode.ExtensionContext) {
     // Mask API key on startup
@@ -24,6 +27,10 @@ export async function activate(context: vscode.ExtensionContext) {
     const configWatcher = vscode.workspace.onDidChangeConfiguration(async (e) => {
         if (e.affectsConfiguration('altGenGemini.geminiApiKey')) {
             await handleApiKeyChange(context);
+        }
+        // Clear output language cache when output language setting changes
+        if (e.affectsConfiguration('altGenGemini.outputLanguage')) {
+            clearOutputLanguageCache();
         }
     });
     context.subscriptions.push(configWatcher);
@@ -172,8 +179,8 @@ async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<voi
         return;
     }
 
-    // Skip if already masked (contains * or .)
-    if (displayedKey.includes('*') || /^\.+/.test(displayedKey)) {
+    // Skip if already masked (contains *, ., or •)
+    if (displayedKey.includes('*') || displayedKey.includes('•') || /^\.+/.test(displayedKey)) {
         // console.log('[ALT Generator] API key is already masked, skipping...');
         return;
     }
@@ -212,7 +219,7 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
     }
 
     // Check if unmasked raw API key exists in settings
-    const isAlreadyMasked = displayedKey.includes('*') || /^\.+/.test(displayedKey);
+    const isAlreadyMasked = displayedKey.includes('*') || displayedKey.includes('•') || /^\.+/.test(displayedKey);
     // console.log('[ALT Generator] isAlreadyMasked:', isAlreadyMasked);
 
     if (!isAlreadyMasked) {
@@ -235,6 +242,57 @@ async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<v
     }
 }
 
+/**
+ * Show confirmation dialog for generated content
+ * Returns user's choice: 'Insert', 'Skip', or 'Cancel'
+ */
+async function showConfirmationDialog(
+    message: string,
+    totalCount: number,
+    processedCount: number
+): Promise<string | undefined> {
+    // Single item: show only Insert and Cancel (no Skip)
+    if (totalCount === 1) {
+        return await vscode.window.showInformationMessage(
+            message,
+            'Insert',
+            'Cancel'
+        );
+    } else {
+        return await vscode.window.showInformationMessage(
+            message,
+            'Insert',
+            'Skip',
+            'Cancel'
+        );
+    }
+}
+
+/**
+ * Handle user's choice from confirmation dialog
+ * Returns true if processing should continue, false if cancelled
+ */
+async function handleUserChoice(
+    choice: string | undefined,
+    editor: vscode.TextEditor,
+    actualSelection: vscode.Selection,
+    newText: string,
+    processedCount: number,
+    totalCount: number
+): Promise<boolean> {
+    if (choice === 'Insert') {
+        const success = await safeEditDocument(editor, actualSelection, newText);
+        if (!success) {
+            return false;
+        }
+    } else if (choice === 'Cancel') {
+        vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
+        return false;
+    }
+    // Skip: continue processing
+    return true;
+}
+
 // Process multiple tags (mixed img and video tags)
 async function processMultipleTags(
     context: vscode.ExtensionContext,
@@ -245,14 +303,19 @@ async function processMultipleTags(
     // Pre-fetch configuration for batch processing optimization
     const insertionMode = getInsertionMode();
     const config = vscode.workspace.getConfiguration('altGenGemini');
-    const contextEnabled = config.get<boolean>('contextEnabled', true);
-    const contextRange = getContextRangeValue();
+    const generationMode = config.get<string>('generationMode', 'SEO');
+    const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard') as 'standard' | 'detailed';
+
+    // Check if any custom prompts need surrounding text
+    const promptType = generationMode === 'SEO' ? 'seo' : 'a11y';
+    const needsContext = needsSurroundingText(promptType) || needsSurroundingText('video', videoDescriptionLength);
+    const contextRange = needsContext ? CONTEXT_RANGE_VALUES.default : 0;
 
     const totalCount = imgTags.length + videoTags.length;
 
     await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: formatMessage('Processing {0} items...', totalCount),
+        title: totalCount === 1 ? 'Generating...' : formatMessage('Processing {0} items...', totalCount),
         cancellable: true
     }, async (progress, token) => {
         let processedCount = 0;
@@ -266,8 +329,8 @@ async function processMultipleTags(
         for (let i = 0; i < allTags.length; i += BATCH_PROCESSING.CHUNK_SIZE) {
             const chunk = allTags.slice(i, i + BATCH_PROCESSING.CHUNK_SIZE);
 
-            // Create context cache for this chunk only
-            const contextCache = await createContextCache(editor.document, chunk, contextRange, contextEnabled);
+            // Create context cache for this chunk only if needed
+            const contextCache = await createContextCache(editor.document, chunk, contextRange, needsContext);
 
             // Process each tag in the chunk
             for (const tag of chunk) {
@@ -277,17 +340,6 @@ async function processMultipleTags(
                 }
 
                 const isImageTag = tag.type === 'img';
-                const fileName = isImageTag ? extractImageFileName(tag.text) : extractVideoFileName(tag.text);
-
-                // Progress message
-                progress.report({
-                    message: formatMessage('{0} {1}/{2} - {3}',
-                        isImageTag ? UI_MESSAGES.IMAGE_PREFIX : UI_MESSAGES.VIDEO_PREFIX,
-                        processedCount + 1,
-                        totalCount,
-                        fileName),
-                    increment: (100 / totalCount)
-                });
 
                 const selection = new vscode.Selection(tag.range.start, tag.range.end);
 
@@ -297,7 +349,7 @@ async function processMultipleTags(
 
                     // Process based on tag type
                     if (isImageTag) {
-                        const result = await processSingleImageTag(context, editor, selection, token, undefined, processedCount, totalCount, insertionMode, cachedContext);
+                        const result = await processSingleImageTag(context, editor, selection, token, progress, processedCount, totalCount, insertionMode, cachedContext);
 
                         // Count success/failure
                         if (result && result.success !== false) {
@@ -307,27 +359,28 @@ async function processMultipleTags(
                         }
 
                         if (result && insertionMode === 'confirm') {
-                            // Show individual confirmation dialog
-                            const choice = await vscode.window.showInformationMessage(
+                            const choice = await showConfirmationDialog(
                                 `✅ ALT: ${result.altText}`,
-                                'Insert',
-                                'Skip',
-                                'Cancel'
+                                totalCount,
+                                processedCount
                             );
 
-                            if (choice === 'Insert') {
-                                const success = await safeEditDocument(editor, result.actualSelection, result.newText);
-                                if (!success) {
-                                    return;
-                                }
-                            } else if (choice === 'Cancel') {
-                                vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
+                            const shouldContinue = await handleUserChoice(
+                                choice,
+                                editor,
+                                result.actualSelection,
+                                result.newText,
+                                processedCount,
+                                totalCount
+                            );
+
+                            if (!shouldContinue) {
                                 return;
                             }
                         }
                     } else {
-                        // Video tag processing (progress is already reported above at line 254-261)
-                        const result = await processSingleVideoTag(context, editor, selection, token, insertionMode, cachedContext, undefined);
+                        // Video tag processing
+                        const result = await processSingleVideoTag(context, editor, selection, token, insertionMode, cachedContext, progress);
 
                         // Count success/failure
                         if (result && result.success !== false) {
@@ -340,7 +393,6 @@ async function processMultipleTags(
                             // For DECORATIVE case (no aria-label added), skip confirmation dialog
                             if (!result.ariaLabel.includes('not added')) {
                                 // Get video description length mode to customize message
-                                const config = vscode.workspace.getConfiguration('altGenGemini');
                                 const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard');
 
                                 // Show individual confirmation dialog with appropriate message
@@ -348,21 +400,22 @@ async function processMultipleTags(
                                     ? `✅ Video description (as comment): ${result.ariaLabel}`
                                     : `✅ aria-label: ${result.ariaLabel}`;
 
-                                const choice = await vscode.window.showInformationMessage(
+                                const choice = await showConfirmationDialog(
                                     message,
-                                    'Insert',
-                                    'Skip',
-                                    'Cancel'
+                                    totalCount,
+                                    processedCount
                                 );
 
-                                if (choice === 'Insert') {
-                                    // Use actualSelection from result to insert at correct position
-                                    const success = await safeEditDocument(editor, result.actualSelection, result.newText);
-                                    if (!success) {
-                                        return;
-                                    }
-                                } else if (choice === 'Cancel') {
-                                    vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount + 1, totalCount));
+                                const shouldContinue = await handleUserChoice(
+                                    choice,
+                                    editor,
+                                    result.actualSelection,
+                                    result.newText,
+                                    processedCount,
+                                    totalCount
+                                );
+
+                                if (!shouldContinue) {
                                     return;
                                 }
                             }
@@ -371,7 +424,12 @@ async function processMultipleTags(
                 } catch (error) {
                     // Increment failure count on error
                     failureCount++;
-                    // Error already displayed in processor functions, ignore here
+
+                    // Display error message
+                    if (!(error instanceof CancellationError) && !token?.isCancellationRequested) {
+                        const errorMessage = getUserFriendlyErrorMessage(error);
+                        vscode.window.showErrorMessage(errorMessage);
+                    }
                 }
 
                 processedCount++;
@@ -381,21 +439,23 @@ async function processMultipleTags(
             contextCache?.clear();
         }
 
-        // Display completion message
-        const imgCount = imgTags.length;
-        const videoCount = videoTags.length;
+        // Display completion message (only for multiple items)
+        if (totalCount > 1) {
+            const imgCount = imgTags.length;
+            const videoCount = videoTags.length;
 
-        if (failureCount === 0) {
-            // All successful
-            const itemsText = imgCount > 0 && videoCount > 0
-                ? formatMessage('{0} images, {1} video', imgCount, videoCount)
-                : imgCount > 0
-                    ? formatMessage('{0} image' + (imgCount > 1 ? 's' : ''), imgCount)
-                    : formatMessage('{0} video' + (videoCount > 1 ? 's' : ''), videoCount);
-            vscode.window.showInformationMessage(formatMessage('✅ {0} items processed ({1})', totalCount, itemsText));
-        } else {
-            // Had errors
-            vscode.window.showWarningMessage(formatMessage('⚠️ Completed with errors: {0} succeeded, {1} failed', successCount, failureCount));
+            if (failureCount === 0) {
+                // All successful
+                const itemsText = imgCount > 0 && videoCount > 0
+                    ? formatMessage('{0} images, {1} video', imgCount, videoCount)
+                    : imgCount > 0
+                        ? formatMessage('{0} image' + (imgCount > 1 ? 's' : ''), imgCount)
+                        : formatMessage('{0} video' + (videoCount > 1 ? 's' : ''), videoCount);
+                vscode.window.showInformationMessage(formatMessage('✅ {0} items processed ({1})', totalCount, itemsText));
+            } else {
+                // Had errors
+                vscode.window.showWarningMessage(formatMessage('⚠️ Completed with errors: {0} succeeded, {1} failed', successCount, failureCount));
+            }
         }
     });
 }
@@ -420,6 +480,10 @@ async function generateAltForImages(
             let failureCount = 0;
             const totalCount = selections.length;
 
+            // Cache for surrounding text to avoid redundant extraction
+            let lastSurroundingText: string | undefined;
+            let lastSelectionLine: number | undefined;
+
             for (const selection of selections) {
                 // Check for cancellation
                 if (token?.isCancellationRequested) {
@@ -428,8 +492,32 @@ async function generateAltForImages(
                 }
 
                 try {
+                    // Determine if we can reuse cached surrounding text
+                    // Only reuse if selections are close (within 10 lines)
+                    const currentLine = selection.start.line;
+                    const canReuseCachedText = lastSelectionLine !== undefined &&
+                                              Math.abs(currentLine - lastSelectionLine) <= 10;
+
+                    const cachedSurroundingText = canReuseCachedText ? lastSurroundingText : undefined;
+
                     // Report progress to show animation
-                    const result = await processSingleImageTag(context, editor, selection, token, progress, processedCount, totalCount, insertionMode);
+                    const result = await processSingleImageTag(
+                        context,
+                        editor,
+                        selection,
+                        token,
+                        progress,
+                        processedCount,
+                        totalCount,
+                        insertionMode,
+                        cachedSurroundingText
+                    );
+
+                    // Update cache for next iteration
+                    if (result && 'surroundingText' in result) {
+                        lastSurroundingText = (result as any).surroundingText;
+                        lastSelectionLine = currentLine;
+                    }
 
                     // Count success/failure
                     if (result && result.success !== false) {
@@ -464,7 +552,12 @@ async function generateAltForImages(
                 } catch (error) {
                     // Increment failure count on error
                     failureCount++;
-                    // Error already displayed in processSingleImageTag, ignore here
+
+                    // Display error message
+                    if (!(error instanceof CancellationError) && !token?.isCancellationRequested) {
+                        const errorMessage = getUserFriendlyErrorMessage(error);
+                        vscode.window.showErrorMessage(errorMessage);
+                    }
                 }
 
                 processedCount++;

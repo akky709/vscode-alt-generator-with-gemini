@@ -8,12 +8,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import fetch from 'node-fetch';
 import { generateAltTextWithRetry } from '../core/gemini';
+import { needsSurroundingText, getGeminiApiModel, loadCustomPrompts } from '../core/prompts';
 import { safeEditDocument, escapeHtml, sanitizeFilePath, validateImageSrc } from '../utils/security';
 import { getMimeType } from '../utils/fileUtils';
 import { formatMessage, extractSurroundingText } from '../utils/textUtils';
-import { getContextRangeValue } from '../utils/config';
 import { detectStaticFileDirectory } from './frameworkDetector';
-import { API_CONFIG, SPECIAL_KEYWORDS } from '../constants';
+import { API_CONFIG, SPECIAL_KEYWORDS, CONTEXT_RANGE_VALUES } from '../constants';
 
 /**
  * Tag information extracted from document
@@ -43,6 +43,7 @@ interface AltTextResult {
     newText: string;
     actualSelection: vscode.Selection;
     success: boolean;
+    surroundingText?: string; // Cache for next iteration
 }
 
 /**
@@ -333,7 +334,8 @@ export async function processSingleImageTag(
                 altText: formatMessage('Decorative image (filename: {0}) → alt=""', tagInfo.imageFileName),
                 newText,
                 actualSelection: tagInfo.actualSelection,
-                success: true
+                success: true,
+                surroundingText: undefined // No context needed for decorative images
             };
         } else {
             return {
@@ -341,7 +343,8 @@ export async function processSingleImageTag(
                 altText: formatMessage('Decorative image (filename: {0}) → alt=""', tagInfo.imageFileName),
                 newText,
                 actualSelection: tagInfo.actualSelection,
-                success: true
+                success: true,
+                surroundingText: undefined // No context needed for decorative images
             };
         }
     }
@@ -361,19 +364,22 @@ export async function processSingleImageTag(
 
     const config = vscode.workspace.getConfiguration('altGenGemini');
     const generationMode = config.get<string>('generationMode', 'SEO');
-    const geminiModel = config.get<string>('geminiApiModel', API_CONFIG.DEFAULT_MODEL);
+
+    // Load custom prompts once for all subsequent operations
+    const customPrompts = loadCustomPrompts();
+    const geminiModel = getGeminiApiModel(customPrompts);
 
     // Get surrounding text (use cached if available, otherwise extract)
+    // Only extract if custom prompts require it
     let surroundingText: string | undefined;
     if (cachedSurroundingText !== undefined) {
         // Use cached surrounding text for batch processing optimization
         surroundingText = cachedSurroundingText;
     } else {
-        // Extract surrounding text if not cached
-        const contextEnabled = config.get<boolean>('contextEnabled', true);
-        const contextRange = getContextRangeValue();
-
-        if (contextEnabled) {
+        // Extract surrounding text only if custom prompts contain {surroundingText} placeholder
+        const promptType = generationMode === 'SEO' ? 'seo' : 'a11y';
+        if (needsSurroundingText(promptType, undefined, customPrompts)) {
+            const contextRange = CONTEXT_RANGE_VALUES.default; // Use default context range
             surroundingText = extractSurroundingText(editor.document, tagInfo.actualSelection, contextRange);
         }
     }
@@ -419,7 +425,8 @@ export async function processSingleImageTag(
                     altText: formatMessage('{0} → alt=""', reason),
                     newText,
                     actualSelection: tagInfo.actualSelection,
-                    success: true
+                    success: true,
+                    surroundingText // Return for caching
                 };
             } else {
                 return {
@@ -427,7 +434,8 @@ export async function processSingleImageTag(
                     altText: formatMessage('{0} → alt=""', reason),
                     newText,
                     actualSelection: tagInfo.actualSelection,
-                    success: true
+                    success: true,
+                    surroundingText // Return for caching
                 };
             }
         }
@@ -445,7 +453,8 @@ export async function processSingleImageTag(
                 altText,
                 newText,
                 actualSelection: tagInfo.actualSelection,
-                success: true
+                success: true,
+                surroundingText // Return for caching
             };
         } else {
             return {
@@ -453,7 +462,8 @@ export async function processSingleImageTag(
                 altText,
                 newText,
                 actualSelection: tagInfo.actualSelection,
-                success: true
+                success: true,
+                surroundingText // Return for caching
             };
         }
     } catch (error) {

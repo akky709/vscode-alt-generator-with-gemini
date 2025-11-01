@@ -9,13 +9,16 @@ import { CHAR_CONSTRAINTS, PROMPT_CONSTRAINTS } from '../constants';
 
 // Custom prompts interface
 interface CustomPrompts {
-    seo?: string;
-    a11y?: string;
-    video?: {
+    imageAlt?: {
+        seo?: string;
+        a11y?: string;
+    };
+    videoDescription?: {
         standard?: string;
         detailed?: string;
     };
     context?: string;
+    geminiApiModel?: string;
 }
 
 // Cache for custom prompts
@@ -25,10 +28,10 @@ let lastPromptsFilePath: string | null = null;
 // Default context instruction template (unified for all media types)
 const DEFAULT_CONTEXT_PROMPT = `
 
-The surrounding text information is as follows.
+Surrounding text is below:
 {surroundingText}
 
-Refer to the surrounding text information; if the surrounding text fully describes the {mediaType} content, return the special keyword: DECORATIVE
+If surrounding text fully describes the {mediaType}, return the special keyword: DECORATIVE
 `;
 
 /**
@@ -38,7 +41,7 @@ Refer to the surrounding text information; if the surrounding text fully describ
  * @returns Context instruction string or empty string if no meaningful context
  */
 function getContextInstruction(surroundingText: string, type: 'seo' | 'a11y' | 'video'): string {
-    // If no meaningful surrounding text, don't add context instruction
+    // If no surrounding text provided at all, don't add context instruction
     if (!surroundingText || surroundingText.trim() === '' || surroundingText === '[No surrounding text found]') {
         return '';
     }
@@ -56,14 +59,14 @@ function getContextInstruction(surroundingText: string, type: 'seo' | 'a11y' | '
     const customPrompts = loadCustomPrompts();
     const customContextPrompt = customPrompts?.context;
 
-    // If custom context prompt exists, use it with placeholders
-    if (customContextPrompt) {
+    // Priority 1: If custom context prompt exists, use it
+    if (customContextPrompt && customContextPrompt.trim() !== '') {
         return customContextPrompt
             .replace(/{surroundingText}/g, formattedSurroundingText)
             .replace(/{mediaType}/g, mediaType);
     }
 
-    // Otherwise use default context prompt with placeholders
+    // Priority 2: Use default context prompt (when VS Code setting is enabled but no custom prompt)
     return DEFAULT_CONTEXT_PROMPT
         .replace(/{surroundingText}/g, formattedSurroundingText)
         .replace(/{mediaType}/g, mediaType);
@@ -79,42 +82,81 @@ function getLanguageConstraint(lang: 'en' | 'ja'): string {
 /**
  * Build SEO prompt with language-specific constraints
  */
-function buildSeoPrompt(lang: 'en' | 'ja', surroundingText?: string): string {
-    const contextInstruction = surroundingText ? getContextInstruction(surroundingText, 'seo') : '';
+function buildSeoPrompt(lang: 'en' | 'ja'): string {
     const languageConstraint = getLanguageConstraint(lang);
 
-    return `Generate SEO-optimized alt text. Be specific, naturally incorporate relevant keywords, avoid keyword stuffing.${contextInstruction} Output only the alt text.${languageConstraint}`;
+    return `You are an SEO expert. Generate alt text. Output only the alt text.${languageConstraint}`;
 }
 
 /**
  * Build A11Y prompt with language-specific constraints
  */
-function buildA11yPrompt(lang: 'en' | 'ja', charConstraint: string, surroundingText?: string): string {
-    const contextInstruction = surroundingText ? getContextInstruction(surroundingText, 'a11y') : '';
+function buildA11yPrompt(lang: 'en' | 'ja', charConstraint: string): string {
     const languageConstraint = getLanguageConstraint(lang);
 
-    return `Generate alt text for users with visual impairments. Be specific, fully describe the image, avoid redundancy. Length: ${charConstraint}.${contextInstruction} Output only the alt text.${languageConstraint}`;
+    return `You are an Accessibility expert. Generate alt text for visual impairments. Length: ${charConstraint}. Output only the alt text.${languageConstraint}`;
 }
 
 /**
  * Build Video prompt with language-specific constraints
  * @param lang - Output language
  * @param mode - 'standard' for short aria-label, 'detailed' for comprehensive description
- * @param surroundingText - Optional surrounding text context
  */
-function buildVideoPrompt(lang: 'en' | 'ja', mode: 'standard' | 'detailed' = 'standard', surroundingText?: string): string {
+function buildVideoPrompt(lang: 'en' | 'ja', mode: 'standard' | 'detailed' = 'standard'): string {
     const languageConstraint = getLanguageConstraint(lang);
 
     if (mode === 'standard') {
-        const contextInstruction = surroundingText ? getContextInstruction(surroundingText, 'video') : '';
-
-        return `Generate a concise aria-label describing the video's function or purpose. Maximum ${PROMPT_CONSTRAINTS.MAX_VIDEO_ARIA_LABEL_WORDS} words. Don't include "video" or "movie".${contextInstruction} Output only the aria-label.${languageConstraint}`;
+        return `You are an Accessibility expert. Generate a concise video aria-label. Maximum ${PROMPT_CONSTRAINTS.MAX_VIDEO_ARIA_LABEL_WORDS} words. Do not include "video". Output only the aria-label.${languageConstraint}`;
     } else {
         // Detailed mode - comprehensive description for HTML comment
-        const contextInstruction = surroundingText ? getContextInstruction(surroundingText, 'video') : '';
-
-        return `Generate a comprehensive description covering all visual elements, actions, and key content. Maximum ${PROMPT_CONSTRAINTS.MAX_VIDEO_DETAILED_WORDS} words.${contextInstruction} Output only the description.${languageConstraint}`;
+        return `You are a video content analyst. Generate a comprehensive video description. Accurately transcribe all dialogue and narration. Add descriptions of important visual information that cannot be understood from audio alone. Maximum ${PROMPT_CONSTRAINTS.MAX_VIDEO_DETAILED_WORDS} words. Output only the description.${languageConstraint}`;
     }
+}
+
+/**
+ * Check if surrounding text context is needed for prompt generation
+ * @param type - Type of prompt: 'seo', 'a11y', or 'video'
+ * @param mode - For video: 'standard' or 'detailed'
+ * @param customPrompts - Pre-loaded custom prompts (optional, will load if not provided)
+ * @returns true if context analysis is enabled via VS Code settings OR custom prompts contain {surroundingText} placeholder
+ */
+export function needsSurroundingText(
+    type: 'seo' | 'a11y' | 'video',
+    mode?: 'standard' | 'detailed',
+    customPrompts?: CustomPrompts | null
+): boolean {
+    // Priority 1: Check VS Code settings
+    const config = vscode.workspace.getConfiguration('altGenGemini');
+    const contextAnalysisEnabled = config.get<boolean>('contextAnalysisEnabled', false);
+
+    if (contextAnalysisEnabled) {
+        return true; // Context analysis explicitly enabled
+    }
+
+    // Priority 2: Check if custom prompts contain {surroundingText} placeholder
+    const prompts = customPrompts !== undefined ? customPrompts : loadCustomPrompts();
+    if (!prompts) {
+        return false; // No custom prompts and settings disabled
+    }
+
+    // Check if context prompt contains {surroundingText}
+    if (prompts.context?.includes('{surroundingText}')) {
+        return true;
+    }
+
+    // Check type-specific prompts
+    if (type === 'seo') {
+        return prompts.imageAlt?.seo?.includes('{surroundingText}') || false;
+    }
+    if (type === 'a11y') {
+        return prompts.imageAlt?.a11y?.includes('{surroundingText}') || false;
+    }
+    if (type === 'video') {
+        const videoMode = mode === 'detailed' ? 'detailed' : 'standard';
+        return prompts.videoDescription?.[videoMode]?.includes('{surroundingText}') || false;
+    }
+
+    return false;
 }
 
 /**
@@ -126,6 +168,7 @@ function buildVideoPrompt(lang: 'en' | 'ja', mode: 'standard' | 'detailed' = 'st
  * @param options.mode - For Video: 'standard' or 'detailed' (not used for seo/a11y)
  * @param options.charConstraint - Character constraint string for A11Y prompts
  * @param options.surroundingText - Surrounding text context for prompts
+ * @param options.customPrompts - Pre-loaded custom prompts (optional, will load if not provided)
  * @returns The generated prompt string
  */
 export function getDefaultPrompt(
@@ -135,65 +178,104 @@ export function getDefaultPrompt(
         mode?: 'standard' | 'detailed';
         charConstraint?: string;
         surroundingText?: string;
+        customPrompts?: CustomPrompts | null;
     }
 ): string {
-    // Try to load custom prompts
-    const customPrompts = loadCustomPrompts();
+    // Use pre-loaded custom prompts if provided, otherwise load
+    const customPrompts = options?.customPrompts !== undefined ? options.customPrompts : loadCustomPrompts();
 
     // Language constraint to append to custom prompts
-    const japaneseConstraint = lang === 'ja' ? '\n\nIMPORTANT: Respond only in Japanese.' : '';
+    // Only add if the custom prompt doesn't already contain language instructions
+    const getLanguageConstraint = (customPrompt?: string): string => {
+        if (lang !== 'ja') {
+            return '';
+        }
+        // Check if custom prompt already has Japanese language instruction
+        if (customPrompt && (
+            customPrompt.includes('Respond only in Japanese') ||
+            customPrompt.includes('日本語で') ||
+            customPrompt.includes('Japanese only')
+        )) {
+            return '';
+        }
+        return ' Respond only in Japanese.';
+    };
 
     if (type === 'seo') {
         // Check if custom prompt exists
-        const customPrompt = customPrompts?.seo;
+        const customPrompt = customPrompts?.imageAlt?.seo;
         if (customPrompt) {
-            console.log('[ALT Generator] Using custom SEO prompt');
-            // If custom prompt doesn't include context instruction, append it
-            const contextInstruction = options?.surroundingText
+            // Add language constraint first
+            const promptWithLang = customPrompt + getLanguageConstraint(customPrompt);
+            // Then add context instruction if needed
+            const needsContext = needsSurroundingText('seo', undefined, customPrompts);
+            const contextInstruction = (needsContext && options?.surroundingText)
                 ? getContextInstruction(options.surroundingText, 'seo')
                 : '';
-            return customPrompt + contextInstruction + japaneseConstraint;
+            return promptWithLang + contextInstruction;
         }
-        console.log('[ALT Generator] Using default SEO prompt');
-        return buildSeoPrompt(lang, options?.surroundingText);
+
+        // Use default prompt with context instruction if enabled
+        const basePrompt = buildSeoPrompt(lang);
+        const needsContext = needsSurroundingText('seo', undefined, customPrompts);
+        const contextInstruction = (needsContext && options?.surroundingText)
+            ? getContextInstruction(options.surroundingText, 'seo')
+            : '';
+        return basePrompt + contextInstruction;
     }
 
     if (type === 'video') {
         const videoMode = options?.mode === 'detailed' ? 'detailed' : 'standard';
 
         // Check if custom prompt exists
-        const customPrompt = customPrompts?.video?.[videoMode];
+        const customPrompt = customPrompts?.videoDescription?.[videoMode];
         if (customPrompt) {
-            console.log(`[ALT Generator] Using custom Video prompt (${videoMode} mode)`);
-            // For custom prompts, add context instruction if surrounding text exists
-            const contextInstruction = options?.surroundingText
+            // Add language constraint first
+            const promptWithLang = customPrompt + getLanguageConstraint(customPrompt);
+            // Then add context instruction if needed
+            const needsContext = needsSurroundingText('video', videoMode, customPrompts);
+            const contextInstruction = (needsContext && options?.surroundingText)
                 ? getContextInstruction(options.surroundingText, 'video')
                 : '';
-            return customPrompt + contextInstruction + japaneseConstraint;
+            return promptWithLang + contextInstruction;
         }
-        console.log(`[ALT Generator] Using default Video prompt (${videoMode} mode)`);
-        return buildVideoPrompt(lang, videoMode, options?.surroundingText);
+
+        // Use default prompt with context instruction if enabled
+        const basePrompt = buildVideoPrompt(lang, videoMode);
+        const needsContext = needsSurroundingText('video', videoMode, customPrompts);
+        const contextInstruction = (needsContext && options?.surroundingText)
+            ? getContextInstruction(options.surroundingText, 'video')
+            : '';
+        return basePrompt + contextInstruction;
     }
 
     if (type === 'a11y') {
         const charConstraint = options?.charConstraint || CHAR_CONSTRAINTS.DEFAULT;
 
         // Check if custom prompt exists
-        const customPrompt = customPrompts?.a11y;
+        const customPrompt = customPrompts?.imageAlt?.a11y;
         if (customPrompt) {
-            console.log('[ALT Generator] Using custom A11Y prompt');
             // Replace {charConstraint} placeholder with actual constraint
             let prompt = customPrompt.replace(/{charConstraint}/g, charConstraint);
 
-            // If custom prompt doesn't include context instruction, append it
-            const contextInstruction = options?.surroundingText
+            // Add language constraint first
+            const promptWithLang = prompt + getLanguageConstraint(prompt);
+
+            // Then add context instruction if needed
+            const needsContext = needsSurroundingText('a11y', undefined, customPrompts);
+            const contextInstruction = (needsContext && options?.surroundingText)
                 ? getContextInstruction(options.surroundingText, 'a11y')
                 : '';
-            return prompt + contextInstruction + japaneseConstraint;
+            return promptWithLang + contextInstruction;
         }
 
-        console.log('[ALT Generator] Using default A11Y prompt');
-        return buildA11yPrompt(lang, charConstraint, options?.surroundingText);
+        // Use default prompt with context instruction if enabled
+        const basePrompt = buildA11yPrompt(lang, charConstraint);
+        const needsContext = needsSurroundingText('a11y', undefined, customPrompts);
+        const contextInstruction = (needsContext && options?.surroundingText)
+            ? getContextInstruction(options.surroundingText, 'a11y')
+            : '';
+        return basePrompt + contextInstruction;
     }
 
     throw new Error(`Unknown prompt type: ${type}`);
@@ -212,8 +294,6 @@ function isPathInWorkspace(absolutePath: string, workspaceRoot: string): boolean
  * Validate custom prompts structure and sanitize against prototype pollution
  */
 function validateCustomPrompts(data: unknown): CustomPrompts | null {
-    console.log('[ALT Generator] Validating custom prompts, data type:', typeof data);
-
     if (typeof data !== 'object' || data === null) {
         console.error('[ALT Generator] Invalid data type for custom prompts');
         return null;
@@ -232,87 +312,102 @@ function validateCustomPrompts(data: unknown): CustomPrompts | null {
     const obj = data as Record<string, unknown>;
     const validated: CustomPrompts = {};
 
-    console.log('[ALT Generator] Keys in data:', Object.keys(obj));
-
-    // Validate seo (must be string and not empty)
-    if ('seo' in obj) {
-        console.log('[ALT Generator] Found "seo" key, type:', typeof obj.seo);
-        if (typeof obj.seo === 'string' && obj.seo.trim() !== '') {
-            validated.seo = obj.seo;
-            console.log('[ALT Generator] SEO prompt validated');
-        } else if (typeof obj.seo === 'string' && obj.seo.trim() === '') {
-            console.log('[ALT Generator] SEO prompt is empty, will use default');
-        } else {
-            console.error('[ALT Generator] Invalid type for "seo" prompt (must be string)');
-        }
-    }
-
-    // Validate a11y (must be string and not empty)
-    if ('a11y' in obj) {
-        console.log('[ALT Generator] Found "a11y" key, type:', typeof obj.a11y);
-        if (typeof obj.a11y === 'string' && obj.a11y.trim() !== '') {
-            validated.a11y = obj.a11y;
-            console.log('[ALT Generator] A11Y prompt validated');
-        } else if (typeof obj.a11y === 'string' && obj.a11y.trim() === '') {
-            console.log('[ALT Generator] A11Y prompt is empty, will use default');
-        } else {
-            console.error('[ALT Generator] Invalid type for "a11y" prompt (must be string)');
-        }
-    }
-
-    // Validate video (must be object with standard/detailed strings)
-    if ('video' in obj) {
-        if (typeof obj.video === 'object' && obj.video !== null) {
-            const videoObj = obj.video as Record<string, unknown>;
+    // Validate imageAlt (must be object with seo/a11y strings)
+    if ('imageAlt' in obj) {
+        if (typeof obj.imageAlt === 'object' && obj.imageAlt !== null) {
+            const imageAltObj = obj.imageAlt as Record<string, unknown>;
 
             // Check for dangerous keys in nested object
             for (const key of dangerousKeys) {
-                if (Object.prototype.hasOwnProperty.call(videoObj, key)) {
-                    console.error(`[ALT Generator] Security: Dangerous key "${key}" found in video prompts`);
+                if (Object.prototype.hasOwnProperty.call(imageAltObj, key)) {
+                    console.error(`[ALT Generator] Security: Dangerous key "${key}" found in imageAlt prompts`);
                     return null;
                 }
             }
 
-            validated.video = {};
+            validated.imageAlt = {};
+
+            if ('seo' in imageAltObj && typeof imageAltObj.seo === 'string' && imageAltObj.seo.trim() !== '') {
+                validated.imageAlt.seo = imageAltObj.seo;
+            }
+
+            if ('a11y' in imageAltObj && typeof imageAltObj.a11y === 'string' && imageAltObj.a11y.trim() !== '') {
+                validated.imageAlt.a11y = imageAltObj.a11y;
+            }
+        } else {
+            console.error('[ALT Generator] Invalid type for "imageAlt" prompt (must be object)');
+        }
+    }
+
+    // Validate videoDescription (must be object with standard/detailed strings)
+    if ('videoDescription' in obj) {
+        if (typeof obj.videoDescription === 'object' && obj.videoDescription !== null) {
+            const videoObj = obj.videoDescription as Record<string, unknown>;
+
+            // Check for dangerous keys in nested object
+            for (const key of dangerousKeys) {
+                if (Object.prototype.hasOwnProperty.call(videoObj, key)) {
+                    console.error(`[ALT Generator] Security: Dangerous key "${key}" found in videoDescription prompts`);
+                    return null;
+                }
+            }
+
+            validated.videoDescription = {};
 
             if ('standard' in videoObj && typeof videoObj.standard === 'string' && videoObj.standard.trim() !== '') {
-                validated.video.standard = videoObj.standard;
-                console.log('[ALT Generator] Video standard prompt validated');
-            } else if ('standard' in videoObj && typeof videoObj.standard === 'string' && videoObj.standard.trim() === '') {
-                console.log('[ALT Generator] Video standard prompt is empty, will use default');
+                validated.videoDescription.standard = videoObj.standard;
             }
 
             if ('detailed' in videoObj && typeof videoObj.detailed === 'string' && videoObj.detailed.trim() !== '') {
-                validated.video.detailed = videoObj.detailed;
-                console.log('[ALT Generator] Video detailed prompt validated');
-            } else if ('detailed' in videoObj && typeof videoObj.detailed === 'string' && videoObj.detailed.trim() === '') {
-                console.log('[ALT Generator] Video detailed prompt is empty, will use default');
+                validated.videoDescription.detailed = videoObj.detailed;
             }
         } else {
-            console.error('[ALT Generator] Invalid type for "video" prompt (must be object)');
+            console.error('[ALT Generator] Invalid type for "videoDescription" prompt (must be object)');
         }
     }
 
     // Validate context (must be string and not empty)
     if ('context' in obj) {
-        console.log('[ALT Generator] Found "context" key, type:', typeof obj.context);
         if (typeof obj.context === 'string' && obj.context.trim() !== '') {
             validated.context = obj.context;
-            console.log('[ALT Generator] Context prompt validated');
-        } else if (typeof obj.context === 'string' && obj.context.trim() === '') {
-            console.log('[ALT Generator] Context prompt is empty, will use default');
-        } else {
+        } else if (typeof obj.context !== 'string') {
             console.error('[ALT Generator] Invalid type for "context" prompt (must be string)');
+        }
+    }
+
+    // Validate geminiApiModel (must be string, either "gemini-2.5-pro" or "gemini-2.5-flash")
+    if ('geminiApiModel' in obj) {
+        if (typeof obj.geminiApiModel === 'string') {
+            const modelValue = obj.geminiApiModel.trim();
+            if (modelValue === 'gemini-2.5-pro' || modelValue === 'gemini-2.5-flash') {
+                validated.geminiApiModel = modelValue;
+            } else if (modelValue !== '') {
+                console.warn('[ALT Generator] Invalid Gemini API model (must be "gemini-2.5-pro" or "gemini-2.5-flash"):', modelValue);
+            }
+        } else {
+            console.error('[ALT Generator] Invalid type for "geminiApiModel" (must be string)');
         }
     }
 
     // Return null if no valid prompts were found
     if (Object.keys(validated).length === 0) {
-        console.log('[ALT Generator] No valid custom prompts found in file');
         return null;
     }
 
     return validated;
+}
+
+/**
+ * Get Gemini API model from custom prompts or return default
+ * @param customPrompts - Pre-loaded custom prompts (optional, will load if not provided)
+ * @returns The Gemini API model string (either from custom prompts or default)
+ */
+export function getGeminiApiModel(customPrompts?: CustomPrompts | null): string {
+    const prompts = customPrompts !== undefined ? customPrompts : loadCustomPrompts();
+    if (prompts?.geminiApiModel) {
+        return prompts.geminiApiModel;
+    }
+    return 'gemini-2.5-flash';
 }
 
 /**
@@ -324,7 +419,7 @@ function validateCustomPrompts(data: unknown): CustomPrompts | null {
  * - Prototype pollution protection: Rejects dangerous keys
  * - Structure validation: Only accepts expected string types
  */
-function loadCustomPrompts(): CustomPrompts | null {
+export function loadCustomPrompts(): CustomPrompts | null {
     try {
         const config = vscode.workspace.getConfiguration('altGenGemini');
         const customPromptsPath = config.get<string>('customPromptsPath', '.vscode/custom-prompts.json');
@@ -339,8 +434,6 @@ function loadCustomPrompts(): CustomPrompts | null {
         const workspaceRoot = workspaceFolders[0].uri.fsPath;
         const absolutePath = path.resolve(workspaceRoot, customPromptsPath);
 
-        console.log('[ALT Generator] Loading custom prompts from:', absolutePath);
-
         // Security: Prevent path traversal attacks
         if (!isPathInWorkspace(absolutePath, workspaceRoot)) {
             console.error('[ALT Generator] Security: Custom prompts path is outside workspace');
@@ -351,27 +444,26 @@ function loadCustomPrompts(): CustomPrompts | null {
         if (lastPromptsFilePath !== absolutePath) {
             customPromptsCache = null;
             lastPromptsFilePath = absolutePath;
-            console.log('[ALT Generator] Cache cleared due to path change');
         }
 
         // Return cached prompts if available
         if (customPromptsCache !== null) {
-            console.log('[ALT Generator] Returning cached custom prompts');
             return customPromptsCache;
         }
 
-        // Check if file exists
+        // Check if file exists and is a file (not a directory)
         if (!fs.existsSync(absolutePath)) {
-            console.log('[ALT Generator] Custom prompts file not found');
-            return null;
+            return null; // File doesn't exist, use defaults (this is normal)
+        }
+
+        const stat = fs.statSync(absolutePath);
+        if (!stat.isFile()) {
+            return null; // Path is a directory, not a file (this is normal)
         }
 
         // Read and parse JSON file
         const fileContent = fs.readFileSync(absolutePath, 'utf-8');
-        console.log('[ALT Generator] File content loaded, length:', fileContent.length);
-
         const parsedData = JSON.parse(fileContent);
-        console.log('[ALT Generator] JSON parsed successfully');
 
         // Security: Validate and sanitize the JSON structure
         const validatedPrompts = validateCustomPrompts(parsedData);
@@ -380,14 +472,15 @@ function loadCustomPrompts(): CustomPrompts | null {
             return null;
         }
 
-        console.log('[ALT Generator] Custom prompts validated and cached:', Object.keys(validatedPrompts));
-
         // Cache the prompts
         customPromptsCache = validatedPrompts;
 
         return validatedPrompts;
     } catch (error) {
-        console.error('[ALT Generator] Failed to load custom prompts:', error);
+        // Only log errors for actual problems (not "file not found")
+        if (error instanceof Error && !error.message.includes('ENOENT')) {
+            console.error('[ALT Generator] Failed to load custom prompts:', error);
+        }
         return null;
     }
 }

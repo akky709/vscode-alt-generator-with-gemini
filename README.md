@@ -4,19 +4,21 @@ Automatically generate ALT attributes for img tags and aria-label attributes for
 
 ## Features
 
-### 🖼️ Image ALT Attribute Generation
+### 🎯 Basic Features (Available to All Users)
+
+#### 🖼️ Image ALT Attribute Generation
 - Automatically generate ALT attributes for `<img>` and `<Image>` tags
 - Two generation modes: **SEO** (search engine optimized) and **A11Y** (accessibility optimized)
 - Batch processing support
-- Automatic decorative image detection (sets `alt=""`)
+- Automatic decorative image detection by filename keywords (e.g., `icon-`, `bg-`)
 
-### 🎬 Video aria-label Generation
+#### 🎬 Video aria-label Generation
 - Generate aria-label attributes for `<video>` tags
 - Two modes: **Standard** (short aria-label) and **Detailed** (comprehensive description as HTML comment)
 - Supports `<source>` tags within `<video>` elements
 - File-type aware comments (HTML, JSX/TSX, PHP)
 
-#### ⚠️ Important Accessibility Notice
+##### ⚠️ Important Accessibility Notice
 
 The `aria-label` attribute is **insufficient** as alternative text (like `alt` for images) to visually describe video content.
 
@@ -29,18 +31,51 @@ This is an alternative way to convey titles or brief functions to assistive tech
 
 **Use this feature only as a last resort when `aria-label` is your only option.**
 
-### 🎯 Smart Features
-- **Decorative Image Detection**: Automatically identifies decorative images by filename keywords (e.g., `icon-`, `bg-`)
-- **Context-Aware Generation**: Analyzes surrounding text to generate more accurate descriptions
-- **Batch Processing Optimization**: Efficiently processes multiple tags with memory-efficient chunking
-- **Cancel Support**: Stop processing anytime during batch operations
+### 🚀 Advanced Features
+
+#### 📝 Context-Aware Generation (Optional)
+
+Enable context analysis to generate more accurate descriptions by analyzing surrounding HTML elements:
+
+**How to Enable:**
+1. Open Settings (`Cmd+,` or `Ctrl+,`)
+2. Search for "Alt Generator: Context Analysis Enabled"
+3. Check the box to enable
+
+**What it does:**
+- Analyzes text in parent elements (div, section, article, etc.)
+- Considers sibling elements before and after the image
+- Detects redundant descriptions (returns `alt=""` when context already describes the image)
+
+**When to use:**
+- ✅ For better accuracy and context-aware descriptions
+- ❌ When you need faster processing (context analysis adds overhead)
+
+#### 🎨 Custom Prompts (Advanced)
+
+Want even more control? Use **Custom Prompts** to unlock:
+
+- **Fine-tuned AI Instructions**: Write your own prompts tailored to your needs
+- **SEO Optimization**: Control keyword usage and description style
+- **Advanced Context Rules**: Define custom redundancy detection logic
+- **Model Selection**: Choose between `gemini-2.5-flash` (fast) and `gemini-2.5-pro` (accurate)
+
+📚 **Learn how to set up Custom Prompts:** [https://note.com/akky709](https://note.com/akky709)
+
+> **Note:** By default, this extension focuses on **direct image/video analysis** for simplicity and speed. Context analysis can be enabled via settings or through custom prompts configuration.
 
 ### 🔒 Security & Performance
 - **Secure API Key Storage**: API keys are encrypted using VSCode's Secrets API
 - **ReDoS Protection**: Regex patterns optimized to prevent catastrophic backtracking attacks
 - **Memory Efficient**: Processes large batches in chunks (10 items per chunk) to minimize memory usage
-- **Document Caching**: Smart caching reduces redundant DOM parsing during batch operations
+- **Smart Caching**: Multiple caching strategies reduce redundant operations
+  - Document text caching with version validation
+  - Custom prompts caching
+  - Surrounding text caching for nearby images (10-line proximity)
+  - Regex pattern caching
+- **Optimized Performance**: Pre-compiled regex patterns and memoized functions
 - **Type-Safe API Responses**: Fully typed Gemini API response handling prevents runtime errors
+- **Cancel Support**: Stop processing anytime during batch operations
 
 ## Supported Files
 
@@ -117,27 +152,25 @@ Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
 - **Gemini API Key**: Paste your API key
 
 **Optional:**
-- **Gemini API Model**: Choose from Pro 2.5, Flash 2.5, or Flash-Lite 2.5
 - **Generation Mode**: SEO or A11Y (default: SEO)
 - **Insertion Mode**: Auto or Manual (default: Manual - review before insertion)
 - **Output Language**: Auto, Japanese, or English (default: Auto)
+- **Context Analysis Enabled**: Enable context-aware generation (default: false)
 - **Decorative Keywords**: Customize keywords for decorative image detection
-- **Context Enabled**: Enable/disable surrounding text analysis (default: enabled)
-- **Context Range**: Narrow, Standard, or Wide (default: Standard)
 - **Video Description Length**: Standard (aria-label) or Detailed (HTML comment) (default: Standard)
+- **Custom Prompts Path**: Path to custom prompts JSON file (default: `.vscode/alt-generator.settings.json`)
 
 Or edit `settings.json`:
 ```json
 {
   "altGenGemini.geminiApiKey": "YOUR_API_KEY",
-  "altGenGemini.geminiApiModel": "gemini-2.5-flash",
   "altGenGemini.generationMode": "SEO",
   "altGenGemini.insertionMode": "confirm",
   "altGenGemini.outputLanguage": "auto",
+  "altGenGemini.contextAnalysisEnabled": false,
   "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"],
-  "altGenGemini.contextEnabled": true,
-  "altGenGemini.contextRange": "standard",
-  "altGenGemini.videoDescriptionLength": "standard"
+  "altGenGemini.videoDescriptionLength": "standard",
+  "altGenGemini.customPromptsPath": ".vscode/alt-generator.settings.json"
 }
 ```
 
@@ -209,7 +242,7 @@ The extension supports two insertion modes for both **images (ALT)** and **video
 - Follows accessibility best practices
 
 **Detailed Mode:**
-- Generates comprehensive description (max 50 words) including visual content
+- Generates comprehensive description (max 100 words) with accurate transcription of all dialogue and narration, plus important visual information
 - Inserted as an HTML comment near the video tag (not as aria-label)
 - Comment format automatically adapts to file type:
   - HTML: `<!-- Video description: ... -->`
@@ -253,8 +286,7 @@ Customize keywords in settings to match your project's naming conventions.
 - If an image is blocked, you'll need to manually write the alt text or use a different image
 
 ### Slow Performance with Large Files
-- **Reduce Context Range**: Switch from "Wide" to "Standard" or "Narrow"
-- **Disable Context**: Turn off context analysis for faster processing
+- **Disable Context**: Turn off "Context Analysis Enabled" in settings for faster processing
 - **Process in Smaller Batches**: Select fewer tags at once
 - **Check File Size**: Large HTML files (>500KB) may slow down parsing
 
@@ -272,24 +304,67 @@ The extension automatically manages API rate limits. For details about Gemini AP
 ### Batch Processing
 - **Chunk Size**: Large batches are automatically processed in chunks of 10 items
 - **Memory Management**: Cache is cleared after each chunk to prevent memory buildup
-- **Context Optimization**: Nearby tags share context extraction, reducing API calls
+- **Context Optimization**: Nearby tags (within 10 lines) share context extraction, reducing redundant analysis
+- **Smart Prompts Loading**: Custom prompts are loaded once per operation instead of multiple times, reducing file I/O by 75-85%
 
 ### Context-Aware Generation
-When **Context Enabled** is on, the extension analyzes surrounding HTML elements to generate more accurate descriptions:
+When **Context Analysis Enabled** is turned on in settings, the extension analyzes surrounding HTML elements to generate more accurate descriptions:
 - Considers text in parent elements (div, section, article, etc.)
 - Analyzes sibling elements before and after the image
 - Intelligently detects redundant descriptions (returns `alt=""` when context already describes the image)
 
+**Note:** Context analysis can also be enabled through custom prompts by including the `{surroundingText}` placeholder.
+
 ### Recommended Settings
-- **For best accuracy**: Context Range = "Wide"
-- **For faster processing**: Context Range = "Narrow" or disable context
+- **For best accuracy**: Enable "Context Analysis Enabled"
+- **For faster processing**: Disable context analysis
 - **For large batches**: Use "Manual" insertion mode to review before applying
 
 ### Custom Prompts (Advanced)
 
 For advanced users, this extension supports custom prompt configuration to fine-tune AI-generated text according to your specific requirements.
 
-You can specify a custom prompts JSON file path in the extension settings (`Alt Generator: Custom Prompts Path`). By default, the extension looks for `.vscode/custom-prompts.json` in your workspace.
+You can specify a custom settings JSON file path in the extension settings. By default, the extension looks for `.vscode/alt-generator.settings.json` in your workspace.
+
+**Example Structure:**
+
+```json
+{
+  "imageAlt": {
+    "seo": "Your custom SEO prompt...",
+    "a11y": "Your custom A11Y prompt..."
+  },
+  "videoDescription": {
+    "standard": "Your custom standard prompt...",
+    "detailed": "Your custom detailed prompt..."
+  },
+  "context": "Instructions for how to use surrounding context...",
+  "geminiApiModel": "gemini-2.5-pro"
+}
+```
+
+**Explanation:**
+
+- **`imageAlt`**: Custom prompts for image ALT text generation
+  - `seo`: Prompt for SEO-optimized ALT text
+  - `a11y`: Prompt for accessibility-optimized ALT text (supports `{charConstraint}` placeholder)
+
+- **`videoDescription`**: Custom prompts for video description generation
+  - `standard`: Prompt for short aria-label (max 10 words)
+  - `detailed`: Prompt for comprehensive description (max 100 words)
+
+- **`context`**: Shared prompt for context-aware generation (applies to both images and videos)
+  - Available placeholders: `{surroundingText}`, `{mediaType}`
+  - This prompt is **appended** to `imageAlt` and `videoDescription` prompts when context analysis is enabled
+  - **Enabling Context Mode**: Context analysis is **automatically enabled** when any prompt contains the `{surroundingText}` placeholder. To disable, remove this placeholder from all prompts or delete the `context` field entirely.
+  - **Important**: Redundancy detection (returning `DECORATIVE` for empty alt) should **only** be defined in the `context` prompt, not in `imageAlt`/`videoDescription` prompts, to avoid conflicting instructions
+
+- **`geminiApiModel`**: Gemini API model to use (optional)
+  - Valid values: `"gemini-2.5-pro"` or `"gemini-2.5-flash"`
+  - Default: `"gemini-2.5-flash"` (if not specified)
+  - Use `"gemini-2.5-pro"` for higher accuracy at the cost of slower speed
+
+All fields are optional. If a field is not provided or empty, the default value will be used.
 
 ## Notes
 

@@ -3,38 +3,52 @@
  */
 
 import * as vscode from 'vscode';
-import { CONTEXT_RANGE_VALUES } from '../constants';
 
 /**
  * Valid insertion modes
  */
 export type InsertionMode = 'auto' | 'confirm';
 
+// Memoization cache for output language
+let cachedOutputLanguage: string | null = null;
+let cachedOutputLanguageSetting: string | null = null;
+
 /**
  * Get output language for ALT text generation
  * Returns 'ja' for Japanese or 'en' for English
+ * Memoized to avoid redundant config reads
  */
 export function getOutputLanguage(): string {
     const config = vscode.workspace.getConfiguration('altGenGemini');
     const langSetting = config.get<string>('outputLanguage', 'auto');
 
-    if (langSetting === 'auto') {
-        const vscodeLang = vscode.env.language;
-        return vscodeLang.startsWith('ja') ? 'ja' : 'en';
+    // Return cached result if setting hasn't changed
+    if (cachedOutputLanguage !== null && cachedOutputLanguageSetting === langSetting) {
+        return cachedOutputLanguage;
     }
 
-    return langSetting;
+    // Compute output language
+    let result: string;
+    if (langSetting === 'auto') {
+        const vscodeLang = vscode.env.language;
+        result = vscodeLang.startsWith('ja') ? 'ja' : 'en';
+    } else {
+        result = langSetting;
+    }
+
+    // Update cache
+    cachedOutputLanguage = result;
+    cachedOutputLanguageSetting = langSetting;
+
+    return result;
 }
 
 /**
- * Get context range value in characters
- * Converts the setting string to actual numeric value
+ * Clear output language cache (call when config changes)
  */
-export function getContextRangeValue(): number {
-    const config = vscode.workspace.getConfiguration('altGenGemini');
-    const rangeSetting = config.get<string>('contextRange', 'standard');
-
-    return CONTEXT_RANGE_VALUES[rangeSetting as keyof typeof CONTEXT_RANGE_VALUES] || CONTEXT_RANGE_VALUES.default;
+export function clearOutputLanguageCache(): void {
+    cachedOutputLanguage = null;
+    cachedOutputLanguageSetting = null;
 }
 
 /**

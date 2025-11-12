@@ -126,7 +126,6 @@ export async function generateAltText(
             : CHAR_CONSTRAINTS.STANDARD_EN;
 
         prompt = getDefaultPrompt('a11y', outputLang as 'en' | 'ja', {
-            mode: 'standard',
             charConstraint: charLengthConstraint,
             surroundingText
         });
@@ -179,7 +178,7 @@ export async function generateVideoAriaLabel(
     model: string,
     token?: vscode.CancellationToken,
     surroundingText?: string,
-    mode: 'standard' | 'detailed' = 'standard'
+    mode: 'summary' | 'transcript' = 'summary'
 ): Promise<string> {
     // キャンセルチェック
     if (token?.isCancellationRequested) {
@@ -191,10 +190,16 @@ export async function generateVideoAriaLabel(
     // 出力言語を取得
     const outputLang = getOutputLanguage();
 
+    // Transcript モード時のみ文字数制約を選択
+    const charLengthConstraint = mode === 'transcript'
+        ? (outputLang === 'ja' ? CHAR_CONSTRAINTS.DETAILED_JA : CHAR_CONSTRAINTS.DETAILED_EN)
+        : undefined;
+
     // プロンプトを取得
     const prompt = getDefaultPrompt('video', outputLang as 'en' | 'ja', {
         surroundingText,
-        mode
+        mode,
+        charConstraint: charLengthConstraint
     });
 
     // デバッグ: 送信するプロンプトをコンソールに表示
@@ -303,7 +308,7 @@ export async function generateVideoAriaLabelWithRetry(
     token?: vscode.CancellationToken,
     surroundingText?: string,
     maxRetries: number = API_CONFIG.MAX_RETRIES,
-    mode: 'standard' | 'detailed' = 'standard'
+    mode: 'summary' | 'transcript' = 'summary'
 ): Promise<string> {
     let lastError: Error | null = null;
 

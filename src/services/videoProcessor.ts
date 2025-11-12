@@ -41,6 +41,7 @@ interface AriaLabelResult {
     ariaLabel: string;
     actualSelection: vscode.Selection;
     success: boolean;
+    replacedLength?: number; // Length of the original text that was replaced
 }
 
 /**
@@ -82,13 +83,12 @@ async function extractVideoTagInfo(
             }
         }
 
-        // Get the start position (beginning of the line to include indentation)
+        // Get the start and end positions of the video tag
         const startPos = document.positionAt(videoStartIndex);
-        const lineStartPos = new vscode.Position(startPos.line, 0);
         const endPos = document.positionAt(endIndex);
 
-        // Create selection from line start to tag end for proper indentation handling
-        actualSelection = new vscode.Selection(lineStartPos, endPos);
+        // Create selection for the video tag itself (not including preceding whitespace)
+        actualSelection = new vscode.Selection(startPos, endPos);
         selectedText = document.getText(actualSelection);
     }
 
@@ -226,7 +226,7 @@ export async function processSingleVideoTag(
     }
 
     const config = vscode.workspace.getConfiguration('altGenGemini');
-    const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard') as 'standard' | 'detailed';
+    const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'summary') as 'summary' | 'transcript';
 
     // Load custom prompts once for all subsequent operations
     const customPrompts = loadCustomPrompts();
@@ -279,28 +279,38 @@ export async function processSingleVideoTag(
         };
     }
 
-    // Handle detailed mode - output as comment (format based on file type)
-    if (videoDescriptionLength === 'detailed') {
+    // Handle transcript mode - output as comment (format based on file type)
+    if (videoDescriptionLength === 'transcript') {
         const comment = getCommentFormat(editor.document.fileName, `Video description: ${description}`);
 
-        // Get indentation from the selected text (which includes the line start)
-        const indentMatch = videoTagInfo.selectedText.match(/^(\s*)/);
-        const indentation = indentMatch ? indentMatch[1] : '';
+        // Get indentation from the line where the video tag starts
+        const videoTagLine = editor.document.lineAt(videoTagInfo.actualSelection.start.line);
+        const videoTagStartColumn = videoTagInfo.actualSelection.start.character;
 
-        // Remove any existing indentation from selectedText to get just the video tag
-        const videoTagWithoutIndent = videoTagInfo.selectedText.trimStart();
+        // Extract indentation (whitespace before <video tag)
+        const indentation = videoTagLine.text.substring(0, videoTagStartColumn);
 
-        // Add comment with same indentation, then video tag on next line with same indentation
-        const newText = `${indentation}${comment}\n${indentation}${videoTagWithoutIndent}`;
+        // Create expanded selection that includes preceding indentation on the same line
+        const expandedStart = new vscode.Position(videoTagInfo.actualSelection.start.line, 0);
+        const expandedSelection = new vscode.Selection(expandedStart, videoTagInfo.actualSelection.end);
+
+        // Get the full text being replaced (including indentation)
+        const replacedText = editor.document.getText(expandedSelection);
+
+        // Add comment with same indentation, then the full replaced text (which includes the video tag)
+        const newText = `${indentation}${comment}\n${replacedText}`;
+
+        // Calculate the length of text being replaced
+        const replacedLength = replacedText.length;
 
         if (insertionMode === 'auto') {
-            const success = await safeEditDocument(editor, videoTagInfo.actualSelection, newText);
+            const success = await safeEditDocument(editor, expandedSelection, newText);
             if (success) {
                 vscode.window.showInformationMessage(formatMessage('✅ Video description added as comment: {0}', description));
             }
         }
 
-        return { newText, ariaLabel: description, actualSelection: videoTagInfo.actualSelection, success: true };
+        return { newText, ariaLabel: description, actualSelection: expandedSelection, success: true, replacedLength };
     }
 
     // Standard mode - Apply aria-label

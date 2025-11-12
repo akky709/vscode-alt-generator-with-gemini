@@ -27,11 +27,11 @@
   "config.contextAnalysisEnabled.description": "周辺テキストを分析して重複を防止",
   "config.contextAnalysisEnabled.markdownDescription": "画像や動画の周辺テキストを分析します。既に周辺テキストで説明されている場合は、自動で `alt=\"\"` に設定し、スクリーンリーダーでの重複読み上げを防止します。",
 
-  "config.videoDescriptionLength.description": "[動画] 生成するテキストの詳細度を設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください",
-  "config.videoDescriptionLength.markdownDescription": "[動画] 生成するテキストの詳細度を設定します。詳細モードは音声解説を作成する際のテキスト原稿などにご利用ください。",
-  "config.videoDescriptionLength.enum.standard": "標準: 動画の目的や機能を説明する短いaria-labelを生成します。",
-  "config.videoDescriptionLength.enum.detailed": "詳細: 動画の視覚的な内容を含む、より詳しいテキストを生成します。",
+  "config.videoDescriptionLength.description": "[動画] 生成するテキストの詳細度を設定します。Transcriptモードは音声解説を作成する際のテキスト原稿などにご利用ください",
+  "config.videoDescriptionLength.markdownDescription": "[動画] 生成するテキストの詳細度を設定します。Transcriptモードは音声解説を作成する際のテキスト原稿などにご利用ください。",
+  "config.videoDescriptionLength.enum.summary": "Summary: 動画を再生する前に、それが何かを識別するための簡潔なラベル",
+  "config.videoDescriptionLength.enum.transcript": "Transcript: 動画の内容を完全に理解するために、視覚情報も含む書き起こし",
 
-  "config.customPromptsPath.description": "カスタム設定ファイルのパス",
-  "config.customPromptsPath.markdownDescription": "GeminiのAIモデルやプロンプトなど、詳細な設定を記述するJSONファイルへのパスです。ワークスペースルートからの相対パスで指定します。  \n\n**例:** `.vscode/alt-generator.settings.json`  \n\n**【重要】** このファイルを指定すると、ALTテキスト生成の設定が、ファイルの内容で上書きされます。ファイル内に記述がない設定項目や、ファイルが見つからない場合は、拡張機能のデフォルト設定が適用されます。"
+  "config.customPromptsPath.description": "カスタムプロンプトファイルのパス",
+  "config.customPromptsPath.markdownDescription": "ALTテキストと動画説明文生成用のカスタムプロンプトを記述するMarkdownファイルへのパスです。ワークスペースルートからの相対パスで指定します。  \n\n**例:** `.vscode/custom-prompts.md`  \n\n**【重要】** このファイルでは、H1見出しでセクションを区切るMarkdown形式でプロンプトをカスタマイズできます。Gemini APIモデルの指定も可能です。ファイルが見つからない場合は、拡張機能のデフォルトプロンプトが適用されます。ファイル形式については、ドキュメントを参照してください。"
 }

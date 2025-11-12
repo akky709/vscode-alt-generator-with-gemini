@@ -132,18 +132,18 @@
         "altGenGemini.videoDescriptionLength": {
           "order": 5,
           "type": "string",
-          "default": "standard",
+          "default": "summary",
           "enum": [
-            "standard",
-            "detailed"
+            "summary",
+            "transcript"
           ],
           "enumDescriptions": [
-            "%config.videoDescriptionLength.enum.standard%",
-            "%config.videoDescriptionLength.enum.detailed%"
+            "%config.videoDescriptionLength.enum.summary%",
+            "%config.videoDescriptionLength.enum.transcript%"
           ],
           "enumItemLabels": [
-            "Standard",
-            "Detailed"
+            "Summary",
+            "Transcript"
           ],
           "description": "%config.videoDescriptionLength.description%",
           "markdownDescription": "%config.videoDescriptionLength.markdownDescription%"
@@ -158,7 +158,7 @@
         "altGenGemini.customPromptsPath": {
           "order": 7,
           "type": "string",
-          "default": ".vscode/alt-generator.settings.json",
+          "default": ".vscode/custom-prompts.md",
           "description": "%config.customPromptsPath.description%",
           "markdownDescription": "%config.customPromptsPath.markdownDescription%"
         }

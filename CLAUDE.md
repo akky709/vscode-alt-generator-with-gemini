@@ -104,12 +104,13 @@ Path resolution for frameworks:
 
 ### Context Analysis
 
-When context analysis is enabled (via `contextAnalysisEnabled` setting or custom prompts with `{surroundingText}` placeholder), the extension analyzes surrounding elements:
+When context analysis is enabled (via `contextAnalysisEnabled` setting or custom prompts with `{surroundingText}`, `{context}`, `{contextRule}`, or `{contextData}` placeholders), the extension analyzes surrounding elements:
 
 1. **Parent Elements**: Extracts text from container elements (div, section, article, etc.)
 2. **Sibling Elements**: Analyzes adjacent elements for context clues
 3. **Search Range**: Fixed at ±150 characters (default)
 4. **Context Caching**: Nearby tags (within 10 lines) share extracted context to reduce redundant analysis
+5. **Automatic Activation**: Context analysis is automatically enabled if any context-related placeholder is detected in custom prompts, even if `contextAnalysisEnabled` setting is `false`
 
 ### Batch Processing Flow
 
@@ -158,43 +159,121 @@ Complete
 
 ### Customizing Prompts
 
-Advanced users can provide custom prompts via `.vscode/alt-generator.settings.json`:
+Advanced users can provide custom prompts via `.vscode/custom-prompts.md` (Markdown format):
 
-```json
-{
-  "imageAlt": {
-    "seo": "Your custom SEO prompt...",
-    "a11y": "Your custom A11Y prompt..."
-  },
-  "videoDescription": {
-    "standard": "Your custom standard prompt...",
-    "detailed": "Your custom detailed prompt..."
-  },
-  "context": "Instructions for how to use surrounding context...",
-  "geminiApiModel": "gemini-2.5-pro"
-}
+```markdown
+# SEO
+You are an SEO expert. Generate alt text optimized for search engines.
+
+## Guidelines
+- Include relevant keywords naturally
+- Be specific and concise
+- Avoid keyword stuffing
+
+{context}
+
+## Output Format
+{languageConstraint}
+Output only the alt text.
+
+# A11Y
+You are an accessibility expert. Generate alt text for visually impaired users.
+Maximum length: {charConstraint} characters.
+
+{context}
+
+## Output Format
+{languageConstraint}
+Output only the alt text.
+
+# Video
+Generate a short aria-label (max 10 words) for the video.
+Do not include the word "video".
+
+{context}
+
+## Output Format
+{languageConstraint}
+Output only the aria-label.
+
+# Video Detailed
+Generate a comprehensive video description (max 50 words).
+Include visual elements, actions, and key content.
+
+{context}
+
+## Output Format
+{languageConstraint}
+Output only the description.
+
+# Context
+<!-- Context-aware generation instructions -->
+
+## Surrounding Text
+{surroundingText}
+
+## Rules
+- If the surrounding text fully describes the {mediaType}, return: DECORATIVE
+- If the surrounding text partially describes it, provide only supplementary information
+- Otherwise, provide a complete description
+
+# Model
+gemini-2.5-flash
 ```
 
 **Structure Explanation:**
 
-- **`imageAlt`**: Custom prompts for image ALT text generation
-  - `seo`: Prompt for SEO-optimized ALT text
-  - `a11y`: Prompt for accessibility-optimized ALT text
+- **H1 Sections**: Define different prompt types with **flexible, case-insensitive matching**
+  - **Image ALT (SEO mode)**: Any of these work:
+    - `# SEO` (shorthand, recommended)
+    - `# Image ALT - SEO` (full name)
+    - `# ImageAltSEO` (CamelCase)
+    - `# image_alt_seo` (snake_case)
+  - **Image ALT (A11Y mode)**: Any of these work:
+    - `# A11Y` (shorthand, recommended)
+    - `# Accessibility`
+    - `# Image ALT - A11Y` (full name)
+    - `# ImageAltA11Y` (CamelCase)
+  - **Video Description (Standard)**: Any of these work:
+    - `# Video` (shorthand, recommended)
+    - `# Video Standard`
+    - `# Video Description - Standard` (full name)
+  - **Video Description (Detailed)**: Any of these work:
+    - `# Video Detailed` (shorthand, recommended)
+    - `# Video Description - Detailed` (full name)
+  - **Context Rule**: Any of these work:
+    - `# Rule` (shorthand)
+    - `# Context Rule` (recommended)
+  - **Context Data**: Any of these work:
+    - `# Data` (shorthand)
+    - `# Context Data` (recommended)
+  - **Context (Legacy)**: `# Context` only (single string format)
+  - **Gemini API Model**: Any of these work:
+    - `# Model` (shorthand, recommended)
+    - `# Gemini API Model` (full name)
 
-- **`videoDescription`**: Custom prompts for video description generation
-  - `standard`: Prompt for short aria-label (max 10 words)
-  - `detailed`: Prompt for comprehensive description (max 50 words)
+- **H2+ Sections**: Internal headings within prompts (passed to Gemini API as-is)
 
-- **`context`**: Shared prompt for context-aware generation (applies to both images and videos)
-  - Available placeholders: `{surroundingText}`, `{mediaType}`
-  - This prompt is **appended** to `imageAlt` and `videoDescription` prompts when context analysis is enabled
-  - **Activation Logic**: Context analysis is automatically enabled when `needsSurroundingText()` returns `true`, which happens when any prompt (including `context`) contains the `{surroundingText}` placeholder
-  - **Critical Design Rule**: Redundancy detection (returning `DECORATIVE` for empty alt) must **only** be defined in the `context` prompt. Never add redundancy instructions to `imageAlt` or `videoDescription` prompts to avoid conflicting AI instructions
+- **Available Placeholders**:
+  - `{surroundingText}`: Replaced with extracted surrounding text (e.g., `<section><h2>Title</h2><p>Description</p></section>`)
+  - `{mediaType}`: Replaced with "image" or "video"
+  - `{charConstraint}`: Replaced with character constraint (A11Y only, e.g., "125")
+  - `{context}`: **Recommended** - Replaced with content from `# Context` section (includes surrounding text and rules)
+  - `{contextRule}`: Advanced - Replaced with content from `# Context Rule` section only
+  - `{contextData}`: Advanced - Replaced with content from `# Context Data` section only
+  - `{languageConstraint}`: Replaced with language constraint (e.g., "Respond only in Japanese.")
+    - Allows controlling where language constraint appears in custom prompts
+    - If omitted, language constraint is appended to end (backward compatibility)
 
-- **`geminiApiModel`**: Gemini API model to use (optional)
-  - Valid values: `"gemini-2.5-pro"` or `"gemini-2.5-flash"`
-  - Default: `"gemini-2.5-flash"` (if not specified)
-  - Use `"gemini-2.5-pro"` for higher accuracy at the cost of slower speed
+- **Context Placeholder Behavior**:
+  - **`{context}` (Recommended)**: Use this in your prompt sections (e.g., `# SEO`, `# A11Y`) to insert the entire `# Context` section. This is the simplest approach for most users.
+  - **`{contextRule}` + `{contextData}` (Advanced)**: Use these if you want fine-grained control over where rules and data appear separately in your prompts.
+  - **Automatic Activation**: If any of `{context}`, `{surroundingText}`, `{contextRule}`, or `{contextData}` appears in custom prompts, context analysis is automatically enabled (even if `contextAnalysisEnabled` setting is `false`).
+
+- **Security Features**:
+  - Path traversal protection (files must be within workspace)
+  - File size limit (10MB maximum)
+  - Only H1 sections are parsed as separators
 
 ## Testing Guidelines
 
@@ -289,9 +368,9 @@ All settings are under the `altGenGemini.*` namespace:
 | `contextAnalysisEnabled` | boolean | false | Enable context-aware generation |
 | `decorativeKeywords` | array | ["icon-", "bg-", "deco-"] | Keywords for decorative image detection |
 | `videoDescriptionLength` | enum | "standard" | Standard (aria-label) or Detailed (comment) |
-| `customSettingsFilePath` | string | ".vscode/alt-generator.settings.json" | Path to custom settings file |
+| `customPromptsPath` | string | ".vscode/custom-prompts.md" | Path to custom prompts Markdown file |
 
-**Note:** The Gemini API model is no longer configurable via settings. By default, the extension uses `gemini-2.5-flash`. To use `gemini-2.5-pro`, specify `"geminiApiModel": "gemini-2.5-pro"` in your custom prompts JSON file.
+**Note:** The Gemini API model is no longer configurable via settings. By default, the extension uses `gemini-2.5-flash`. To use `gemini-2.5-pro`, add a `# Gemini API Model` section with `gemini-2.5-pro` in your custom prompts Markdown file.
 
 ## Code Style Guidelines
 

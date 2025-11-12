@@ -27,11 +27,11 @@
   "config.contextAnalysisEnabled.description": "Analyze surrounding text to prevent redundancy",
   "config.contextAnalysisEnabled.markdownDescription": "Analyze surrounding text of images and videos. If already described by surrounding text, automatically sets `alt=\"\"` to prevent duplicate descriptions for screen readers.",
 
-  "config.videoDescriptionLength.description": "[Video] Set the detail level of generated text. Use detailed mode for creating text manuscripts for audio descriptions, etc",
-  "config.videoDescriptionLength.markdownDescription": "[Video] Set the detail level of generated text. Use detailed mode for creating text manuscripts for audio descriptions, etc.",
-  "config.videoDescriptionLength.enum.standard": "Standard: Generate a short aria-label that describes the video's purpose or function.",
-  "config.videoDescriptionLength.enum.detailed": "Detailed: Generate more detailed text including the visual content of the video.",
+  "config.videoDescriptionLength.description": "[Video] Set the detail level of generated text. Use transcript mode for creating text manuscripts for audio descriptions, etc",
+  "config.videoDescriptionLength.markdownDescription": "[Video] Set the detail level of generated text. Use transcript mode for creating text manuscripts for audio descriptions, etc.",
+  "config.videoDescriptionLength.enum.summary": "Summary: A concise label to identify what the video is before playing it",
+  "config.videoDescriptionLength.enum.transcript": "Transcript: A complete transcription including visual information to fully understand the video content",
 
-  "config.customPromptsPath.description": "Custom Settings File Path",
-  "config.customPromptsPath.markdownDescription": "Path to a JSON file containing detailed settings such as Gemini AI model and prompts. Specify as a relative path from the workspace root.  \n\n**Example:** `.vscode/alt-generator.settings.json`  \n\n**Important:** Specifying this file will override the ALT text generation settings with the file's contents. Settings not specified in the file, or if the file is not found, will use the extension's default settings."
+  "config.customPromptsPath.description": "Custom Prompts File Path",
+  "config.customPromptsPath.markdownDescription": "Path to a Markdown file containing custom prompts for ALT text and video description generation. Specify as a relative path from the workspace root.  \n\n**Example:** `.vscode/custom-prompts.md`  \n\n**Important:** This file allows you to customize prompts using Markdown format with H1 sections. You can also specify the Gemini API model. If the file is not found, the extension's default prompts will be used. See documentation for the file format."
 }

@@ -113,10 +113,10 @@ export async function activate(context: vscode.ExtensionContext) {
                     } else {
                         // Get video description length mode to customize message
                         const config = vscode.workspace.getConfiguration('altGenGemini');
-                        const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard');
+                        const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'summary');
 
                         // Show confirmation dialog with appropriate message
-                        const message = videoDescriptionLength === 'detailed'
+                        const message = videoDescriptionLength === 'transcript'
                             ? `✅ Video description (as comment): ${result.ariaLabel}`
                             : `✅ aria-label: ${result.ariaLabel}`;
 
@@ -304,7 +304,7 @@ async function processMultipleTags(
     const insertionMode = getInsertionMode();
     const config = vscode.workspace.getConfiguration('altGenGemini');
     const generationMode = config.get<string>('generationMode', 'SEO');
-    const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard') as 'standard' | 'detailed';
+    const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'summary') as 'summary' | 'transcript';
 
     // Check if any custom prompts need surrounding text
     const promptType = generationMode === 'SEO' ? 'seo' : 'a11y';
@@ -322,8 +322,24 @@ async function processMultipleTags(
         let successCount = 0;
         let failureCount = 0;
 
-        // Combine all tags for chunk processing
-        const allTags = [...imgTags, ...videoTags];
+        // Combine all tags and sort by position in document (forward order)
+        // Process from start to end for better user experience
+        const allTags = [...imgTags, ...videoTags].sort((a, b) => {
+            const aOffset = editor.document.offsetAt(a.range.start);
+            const bOffset = editor.document.offsetAt(b.range.start);
+            return aOffset - bOffset; // Forward order
+        });
+
+        // Track offset changes to adjust subsequent tag ranges after edits
+        let cumulativeOffsetDelta = 0;
+
+        // Store original offsets for all tags before any edits
+        const tagOffsets = allTags.map(tag => ({
+            tag,
+            startOffset: editor.document.offsetAt(tag.range.start),
+            endOffset: editor.document.offsetAt(tag.range.end),
+            originalLength: editor.document.getText(tag.range).length
+        }));
 
         // Process in chunks for memory efficiency
         for (let i = 0; i < allTags.length; i += BATCH_PROCESSING.CHUNK_SIZE) {
@@ -333,7 +349,11 @@ async function processMultipleTags(
             const contextCache = await createContextCache(editor.document, chunk, contextRange, needsContext);
 
             // Process each tag in the chunk
-            for (const tag of chunk) {
+            for (let j = 0; j < chunk.length; j++) {
+                const tag = chunk[j];
+                const tagIndex = i + j;
+                const tagOffset = tagOffsets[tagIndex];
+
                 if (token.isCancellationRequested) {
                     vscode.window.showWarningMessage(formatMessage('⏸️ Cancelled ({0}/{1} processed)', processedCount, totalCount));
                     return;
@@ -341,7 +361,15 @@ async function processMultipleTags(
 
                 const isImageTag = tag.type === 'img';
 
-                const selection = new vscode.Selection(tag.range.start, tag.range.end);
+                // Adjust tag range based on cumulative offset delta
+                const adjustedStartOffset = tagOffset.startOffset + cumulativeOffsetDelta;
+                const adjustedEndOffset = tagOffset.endOffset + cumulativeOffsetDelta;
+                const adjustedStart = editor.document.positionAt(adjustedStartOffset);
+                const adjustedEnd = editor.document.positionAt(adjustedEndOffset);
+                const selection = new vscode.Selection(adjustedStart, adjustedEnd);
+
+                // Store original length for offset calculation
+                const originalLength = tagOffset.originalLength;
 
                 try {
                     // Get cached surrounding text for optimization
@@ -359,6 +387,11 @@ async function processMultipleTags(
                         }
 
                         if (result && insertionMode === 'confirm') {
+                            // Calculate replaced length BEFORE edit
+                            const replacedStartOffset = editor.document.offsetAt(result.actualSelection.start);
+                            const replacedEndOffset = editor.document.offsetAt(result.actualSelection.end);
+                            const replacedLength = replacedEndOffset - replacedStartOffset;
+
                             const choice = await showConfirmationDialog(
                                 `✅ ALT: ${result.altText}`,
                                 totalCount,
@@ -377,6 +410,17 @@ async function processMultipleTags(
                             if (!shouldContinue) {
                                 return;
                             }
+
+                            // Update offset delta after edit
+                            const newTextLength = result.newText.length;
+                            cumulativeOffsetDelta += (newTextLength - replacedLength);
+                        } else if (result && insertionMode === 'auto') {
+                            // Auto mode already edited, calculate offset delta
+                            // Note: In auto mode, safeEditDocument was already called in processSingleImageTag
+                            // We need to calculate the replaced length based on original vs new text
+                            const replacedLength = originalLength; // Use original tag length
+                            const newTextLength = result.newText.length;
+                            cumulativeOffsetDelta += (newTextLength - replacedLength);
                         }
                     } else {
                         // Video tag processing
@@ -392,11 +436,16 @@ async function processMultipleTags(
                         if (result && insertionMode === 'confirm') {
                             // For DECORATIVE case (no aria-label added), skip confirmation dialog
                             if (!result.ariaLabel.includes('not added')) {
+                                // Calculate replaced length BEFORE edit
+                                const replacedStartOffset = editor.document.offsetAt(result.actualSelection.start);
+                                const replacedEndOffset = editor.document.offsetAt(result.actualSelection.end);
+                                const replacedLength = replacedEndOffset - replacedStartOffset;
+
                                 // Get video description length mode to customize message
-                                const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'standard');
+                                const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'summary');
 
                                 // Show individual confirmation dialog with appropriate message
-                                const message = videoDescriptionLength === 'detailed'
+                                const message = videoDescriptionLength === 'transcript'
                                     ? `✅ Video description (as comment): ${result.ariaLabel}`
                                     : `✅ aria-label: ${result.ariaLabel}`;
 
@@ -418,7 +467,17 @@ async function processMultipleTags(
                                 if (!shouldContinue) {
                                     return;
                                 }
+
+                                // Update offset delta after edit
+                                const newTextLength = result.newText.length;
+                                cumulativeOffsetDelta += (newTextLength - replacedLength);
                             }
+                        } else if (result && insertionMode === 'auto' && !result.ariaLabel.includes('not added')) {
+                            // Auto mode already edited, calculate offset delta
+                            // Use replacedLength from result if available (for expanded selections like video comments)
+                            const replacedLength = result.replacedLength !== undefined ? result.replacedLength : originalLength;
+                            const newTextLength = result.newText.length;
+                            cumulativeOffsetDelta += (newTextLength - replacedLength);
                         }
                     }
                 } catch (error) {

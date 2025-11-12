@@ -158,7 +158,7 @@ Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
 - **Context Analysis Enabled**: Enable context-aware generation (default: false)
 - **Decorative Keywords**: Customize keywords for decorative image detection
 - **Video Description Length**: Standard (aria-label) or Detailed (HTML comment) (default: Standard)
-- **Custom Prompts Path**: Path to custom prompts JSON file (default: `.vscode/alt-generator.settings.json`)
+- **Custom Prompts Path**: Path to custom prompts Markdown file (default: `.vscode/custom-prompts.md`)
 
 Or edit `settings.json`:
 ```json
@@ -170,7 +170,7 @@ Or edit `settings.json`:
   "altGenGemini.contextAnalysisEnabled": false,
   "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"],
   "altGenGemini.videoDescriptionLength": "standard",
-  "altGenGemini.customPromptsPath": ".vscode/alt-generator.settings.json"
+  "altGenGemini.customPromptsPath": ".vscode/custom-prompts.md"
 }
 ```
 
@@ -313,7 +313,7 @@ When **Context Analysis Enabled** is turned on in settings, the extension analyz
 - Analyzes sibling elements before and after the image
 - Intelligently detects redundant descriptions (returns `alt=""` when context already describes the image)
 
-**Note:** Context analysis can also be enabled through custom prompts by including the `{surroundingText}` placeholder.
+**Note:** Context analysis can also be enabled through custom prompts by including any of these placeholders: `{context}`, `{surroundingText}`, `{contextRule}`, or `{contextData}`.
 
 ### Recommended Settings
 - **For best accuracy**: Enable "Context Analysis Enabled"
@@ -322,49 +322,121 @@ When **Context Analysis Enabled** is turned on in settings, the extension analyz
 
 ### Custom Prompts (Advanced)
 
-For advanced users, this extension supports custom prompt configuration to fine-tune AI-generated text according to your specific requirements.
+For advanced users, this extension supports custom prompt configuration using **Markdown format** to fine-tune AI-generated text according to your specific requirements.
 
-You can specify a custom settings JSON file path in the extension settings. By default, the extension looks for `.vscode/alt-generator.settings.json` in your workspace.
+You can specify a custom prompts file path in the extension settings. By default, the extension looks for `.vscode/custom-prompts.md` in your workspace.
 
 **Example Structure:**
 
-```json
-{
-  "imageAlt": {
-    "seo": "Your custom SEO prompt...",
-    "a11y": "Your custom A11Y prompt..."
-  },
-  "videoDescription": {
-    "standard": "Your custom standard prompt...",
-    "detailed": "Your custom detailed prompt..."
-  },
-  "context": "Instructions for how to use surrounding context...",
-  "geminiApiModel": "gemini-2.5-pro"
-}
+```markdown
+# Image ALT - SEO
+
+You are an SEO expert. Generate alt text optimized for search engines.
+
+## Guidelines
+- Include relevant keywords naturally
+- Be specific and concise
+- Avoid keyword stuffing
+
+{context}
+
+## Output Format
+{languageConstraint}
+Output only the alt text.
+
+---
+
+# Image ALT - A11Y
+
+You are an accessibility expert. Generate alt text for visually impaired users.
+Maximum length: {charConstraint} characters.
+
+{context}
+
+## Output Format
+{languageConstraint}
+Output only the alt text.
+
+---
+
+# Video Description - Standard
+
+Generate a short aria-label (max 10 words) for the video.
+Do not include the word "video".
+
+{context}
+
+## Output Format
+{languageConstraint}
+Output only the aria-label.
+
+---
+
+# Video Description - Detailed
+
+Generate a comprehensive video description (max 50 words).
+Include visual elements, actions, and key content.
+
+{context}
+
+## Output Format
+{languageConstraint}
+Output only the description.
+
+---
+
+# Context
+
+<!-- Context-aware generation instructions -->
+
+## Surrounding Text
+{surroundingText}
+
+## Rules
+- If the surrounding text fully describes the {mediaType}, return: DECORATIVE
+- If the surrounding text partially describes it, provide only supplementary information
+- Otherwise, provide a complete description
+
+---
+
+# Gemini API Model
+
+gemini-2.5-flash
 ```
 
 **Explanation:**
 
-- **`imageAlt`**: Custom prompts for image ALT text generation
-  - `seo`: Prompt for SEO-optimized ALT text
-  - `a11y`: Prompt for accessibility-optimized ALT text (supports `{charConstraint}` placeholder)
+- **H1 Sections** (case-insensitive): Define different prompt types
+  - `# Image ALT - SEO` (or shorthand: `# SEO`): SEO-optimized ALT text prompt
+  - `# Image ALT - A11Y` (or shorthand: `# A11Y`): Accessibility-optimized ALT text prompt
+  - `# Video Description - Standard` (or shorthand: `# Video`): Short aria-label prompt
+  - `# Video Description - Detailed` (or shorthand: `# Video Detailed`): Comprehensive description prompt
+  - `# Context`: Combined context rules and data (recommended approach)
+  - `# Context Rule` (advanced): Rules for handling surrounding text
+  - `# Context Data` (advanced): Data section for surrounding text
+  - `# Gemini API Model` (or shorthand: `# Model`): Specify model (`gemini-2.5-pro` or `gemini-2.5-flash`)
 
-- **`videoDescription`**: Custom prompts for video description generation
-  - `standard`: Prompt for short aria-label (max 10 words)
-  - `detailed`: Prompt for comprehensive description (max 100 words)
+- **H2+ Sections**: Internal headings within prompts (passed to AI as-is)
 
-- **`context`**: Shared prompt for context-aware generation (applies to both images and videos)
-  - Available placeholders: `{surroundingText}`, `{mediaType}`
-  - This prompt is **appended** to `imageAlt` and `videoDescription` prompts when context analysis is enabled
-  - **Enabling Context Mode**: Context analysis is **automatically enabled** when any prompt contains the `{surroundingText}` placeholder. To disable, remove this placeholder from all prompts or delete the `context` field entirely.
-  - **Important**: Redundancy detection (returning `DECORATIVE` for empty alt) should **only** be defined in the `context` prompt, not in `imageAlt`/`videoDescription` prompts, to avoid conflicting instructions
+- **Horizontal Lines** (`---`): Visual separators (removed before sending to AI)
 
-- **`geminiApiModel`**: Gemini API model to use (optional)
-  - Valid values: `"gemini-2.5-pro"` or `"gemini-2.5-flash"`
-  - Default: `"gemini-2.5-flash"` (if not specified)
-  - Use `"gemini-2.5-pro"` for higher accuracy at the cost of slower speed
+- **HTML Comments** (`<!-- ... -->`): Notes for yourself (removed before sending to AI)
 
-All fields are optional. If a field is not provided or empty, the default value will be used.
+- **Available Placeholders**:
+  - `{context}`: **Recommended** - Inserts entire `# Context` section content (simplest approach)
+  - `{surroundingText}`: Replaced with extracted surrounding text (e.g., `<section><h2>Title</h2></section>`)
+  - `{mediaType}`: Replaced with "image" or "video"
+  - `{charConstraint}`: Replaced with character constraint (A11Y only, e.g., "125")
+  - `{languageConstraint}`: Replaced with language constraint (e.g., "Respond only in Japanese.")
+  - `{contextRule}`: Advanced - Inserts `# Context Rule` section content only
+  - `{contextData}`: Advanced - Inserts `# Context Data` section content only
+
+- **How Context Works**:
+  - Use `{context}` in your prompt sections (`# SEO`, `# A11Y`, etc.) to insert the entire `# Context` section
+  - The `# Context` section should contain `{surroundingText}` and any rules you want applied
+  - Context analysis is automatically enabled when any context placeholder is detected
+
+All sections are optional. If not provided, the extension's default prompts will be used.
 
 ## Notes
 

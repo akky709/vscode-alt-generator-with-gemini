@@ -47,22 +47,18 @@
         "title": "%command.generateVideoAriaLabel%"
       },
       {
+        "command": "alt-generator.setApiKey",
+        "title": "%command.setApiKey%"
+      },
+      {
         "command": "alt-generator.clearApiKey",
         "title": "%command.clearApiKey%"
       }
     ],
     "configuration": {
       "properties": {
-        "altGenGemini.geminiApiKey": {
+        "altGenGemini.altGenerationMode": {
           "order": 0,
-          "type": "string",
-          "default": "",
-          "description": "%config.geminiApiKey.description%",
-          "markdownDescription": "%config.geminiApiKey.markdownDescription%",
-          "editPresentation": "singlelineText"
-        },
-        "altGenGemini.generationMode": {
-          "order": 1,
           "type": "string",
           "default": "SEO",
           "enum": [
@@ -70,18 +66,18 @@
             "A11Y"
           ],
           "enumDescriptions": [
-            "%config.generationMode.enum.seo%",
-            "%config.generationMode.enum.a11y%"
+            "%config.altGenerationMode.enum.seo%",
+            "%config.altGenerationMode.enum.a11y%"
           ],
           "enumItemLabels": [
             "Search Engine",
             "Accessibility"
           ],
-          "description": "%config.generationMode.description%",
-          "markdownDescription": "%config.generationMode.markdownDescription%"
+          "description": "%config.altGenerationMode.description%",
+          "markdownDescription": "%config.altGenerationMode.markdownDescription%"
         },
         "altGenGemini.insertionMode": {
-          "order": 2,
+          "order": 1,
           "type": "string",
           "default": "confirm",
           "enum": [
@@ -100,7 +96,7 @@
           "markdownDescription": "%config.insertionMode.markdownDescription%"
         },
         "altGenGemini.outputLanguage": {
-          "order": 3,
+          "order": 2,
           "type": "string",
           "default": "auto",
           "enum": [
@@ -116,7 +112,7 @@
           "description": "%config.outputLanguage.description%"
         },
         "altGenGemini.decorativeKeywords": {
-          "order": 4,
+          "order": 3,
           "type": "array",
           "default": [
             "icon-",
@@ -129,8 +125,8 @@
           "description": "%config.decorativeKeywords.description%",
           "markdownDescription": "%config.decorativeKeywords.markdownDescription%"
         },
-        "altGenGemini.videoDescriptionLength": {
-          "order": 5,
+        "altGenGemini.videoDescriptionMode": {
+          "order": 4,
           "type": "string",
           "default": "summary",
           "enum": [
@@ -138,29 +134,29 @@
             "transcript"
           ],
           "enumDescriptions": [
-            "%config.videoDescriptionLength.enum.summary%",
-            "%config.videoDescriptionLength.enum.transcript%"
+            "%config.videoDescriptionMode.enum.summary%",
+            "%config.videoDescriptionMode.enum.transcript%"
           ],
           "enumItemLabels": [
             "Summary",
             "Transcript"
           ],
-          "description": "%config.videoDescriptionLength.description%",
-          "markdownDescription": "%config.videoDescriptionLength.markdownDescription%"
+          "description": "%config.videoDescriptionMode.description%",
+          "markdownDescription": "%config.videoDescriptionMode.markdownDescription%"
         },
         "altGenGemini.contextAnalysisEnabled": {
-          "order": 6,
+          "order": 5,
           "type": "boolean",
           "default": false,
           "description": "%config.contextAnalysisEnabled.description%",
           "markdownDescription": "%config.contextAnalysisEnabled.markdownDescription%"
         },
-        "altGenGemini.customPromptsPath": {
-          "order": 7,
+        "altGenGemini.customFilePath": {
+          "order": 6,
           "type": "string",
           "default": ".vscode/custom-prompts.md",
-          "description": "%config.customPromptsPath.description%",
-          "markdownDescription": "%config.customPromptsPath.markdownDescription%"
+          "description": "%config.customFilePath.description%",
+          "markdownDescription": "%config.customFilePath.markdownDescription%"
         }
       }
     },

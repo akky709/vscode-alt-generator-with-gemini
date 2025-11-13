@@ -20,10 +20,7 @@ interface CustomPrompts {
         standard?: string;
         detailed?: string;
     };
-    context?: string | {
-        rule?: string;
-        data?: string;
-    };
+    context?: string;
     geminiApiModel?: string;
 }
 
@@ -44,10 +41,9 @@ If surrounding text fully describes the {mediaType}, return the special keyword:
  * Get context instruction for avoiding redundancy with surrounding text
  * @param surroundingText - Text surrounding the image/video
  * @param type - Type of media: 'seo', 'a11y', or 'video'
- * @param part - Which part to return: 'legacy' (old string format), 'rule', or 'data'
  * @returns Context instruction string or empty string if no meaningful context
  */
-function getContextInstruction(surroundingText: string, type: 'seo' | 'a11y' | 'video', part: 'legacy' | 'rule' | 'data' = 'legacy'): string {
+function getContextInstruction(surroundingText: string, type: 'seo' | 'a11y' | 'video'): string {
     // Determine media type for placeholder replacement
     const mediaType = type === 'video' ? 'video' : 'image';
     const mediaTypeUpper = mediaType.toUpperCase();
@@ -62,47 +58,17 @@ function getContextInstruction(surroundingText: string, type: 'seo' | 'a11y' | '
     const customPrompts = loadCustomPrompts();
     const customContextPrompt = customPrompts?.context;
 
-    // Handle object format (new format with rule and data)
-    if (customContextPrompt && typeof customContextPrompt === 'object') {
-        if (part === 'rule') {
-            const rulePrompt = customContextPrompt.rule || '';
-            return rulePrompt
-                .replace(/{surroundingText}/g, formattedSurroundingText)
-                .replace(/{mediaType}/g, mediaType);
-        } else if (part === 'data') {
-            const dataPrompt = customContextPrompt.data || '';
-            return dataPrompt
-                .replace(/{surroundingText}/g, formattedSurroundingText)
-                .replace(/{mediaType}/g, mediaType);
-        }
-        // For 'legacy' part with object format, combine rule and data
-        const rulePrompt = customContextPrompt.rule || '';
-        const dataPrompt = customContextPrompt.data || '';
-        const combined = rulePrompt + dataPrompt;
-        return combined
+    // Handle string format (unified format)
+    if (customContextPrompt && typeof customContextPrompt === 'string' && customContextPrompt.trim() !== '') {
+        return customContextPrompt
             .replace(/{surroundingText}/g, formattedSurroundingText)
             .replace(/{mediaType}/g, mediaType);
-    }
-
-    // Handle string format (legacy format or default)
-    if (customContextPrompt && typeof customContextPrompt === 'string' && customContextPrompt.trim() !== '') {
-        // Legacy string format - return only for 'legacy' part
-        if (part === 'legacy') {
-            return customContextPrompt
-                .replace(/{surroundingText}/g, formattedSurroundingText)
-                .replace(/{mediaType}/g, mediaType);
-        }
-        return ''; // No rule/data for legacy string format
     }
 
     // Priority: Use default context prompt (when VS Code setting is enabled but no custom prompt)
-    if (part === 'legacy') {
-        return DEFAULT_CONTEXT_PROMPT
-            .replace(/{surroundingText}/g, formattedSurroundingText)
-            .replace(/{mediaType}/g, mediaType);
-    }
-
-    return '';
+    return DEFAULT_CONTEXT_PROMPT
+        .replace(/{surroundingText}/g, formattedSurroundingText)
+        .replace(/{mediaType}/g, mediaType);
 }
 
 /**
@@ -173,28 +139,14 @@ export function needsSurroundingText(
         return false; // No custom prompts and settings disabled
     }
 
-    // Check if context prompt contains {surroundingText}
-    if (prompts.context) {
-        if (typeof prompts.context === 'string') {
-            if (prompts.context.includes('{surroundingText}')) {
-                return true;
-            }
-        } else if (typeof prompts.context === 'object') {
-            // Check both rule and data for {surroundingText}
-            if (prompts.context.rule?.includes('{surroundingText}') || prompts.context.data?.includes('{surroundingText}')) {
-                return true;
-            }
-        }
-    }
-
-    // Check type-specific prompts for {surroundingText} or {contextRule}/{contextData} or {context} (legacy)
+    // Check type-specific prompts for {context} or {surroundingText} placeholder
     if (type === 'seo') {
         const prompt = prompts.imageAlt?.seo || '';
-        return prompt.includes('{surroundingText}') || prompt.includes('{contextRule}') || prompt.includes('{contextData}') || prompt.includes('{context}');
+        return prompt.includes('{context}') || prompt.includes('{surroundingText}');
     }
     if (type === 'a11y') {
         const prompt = prompts.imageAlt?.a11y || '';
-        return prompt.includes('{surroundingText}') || prompt.includes('{contextRule}') || prompt.includes('{contextData}') || prompt.includes('{context}');
+        return prompt.includes('{context}') || prompt.includes('{surroundingText}');
     }
     if (type === 'video') {
         // Support both new (summary/transcript) and legacy (standard/detailed) naming
@@ -203,7 +155,7 @@ export function needsSurroundingText(
             || prompts.videoDescription?.['standard'] // Legacy fallback
             || prompts.videoDescription?.['detailed'] // Legacy fallback
             || '';
-        return prompt.includes('{surroundingText}') || prompt.includes('{contextRule}') || prompt.includes('{contextData}') || prompt.includes('{context}');
+        return prompt.includes('{context}') || prompt.includes('{surroundingText}');
     }
 
     return false;
@@ -273,23 +225,10 @@ export function getDefaultPrompt(
                 result = result.replace(/{surroundingText}/g, '');
             }
 
-            // Replace {contextRule} and {contextData} placeholders
-            if (needsContext && options?.surroundingText) {
-                const contextRule = getContextInstruction(options.surroundingText, 'seo', 'rule');
-                const contextData = getContextInstruction(options.surroundingText, 'seo', 'data');
-                result = result.replace(/{contextRule}/g, contextRule);
-                result = result.replace(/{contextData}/g, contextData);
-            } else {
-                // Remove placeholders if no context available
-                result = result.replace(/{contextRule}/g, '');
-                result = result.replace(/{contextData}/g, '');
-            }
-
-            // Check if prompt contains legacy {context} placeholder
+            // Replace {context} placeholder with context instruction
             if (result.includes('{context}')) {
-                // Custom prompt with {context} placeholder - replace it with context instruction
                 const contextInstruction = (needsContext && options?.surroundingText)
-                    ? getContextInstruction(options.surroundingText, 'seo', 'legacy')
+                    ? getContextInstruction(options.surroundingText, 'seo')
                     : '';
                 result = result.replace(/{context}/g, contextInstruction);
             }
@@ -310,7 +249,7 @@ export function getDefaultPrompt(
         const basePrompt = buildSeoPrompt(lang);
         const needsContext = needsSurroundingText('seo', undefined, customPrompts);
         const contextInstruction = (needsContext && options?.surroundingText)
-            ? getContextInstruction(options.surroundingText, 'seo', 'legacy')
+            ? getContextInstruction(options.surroundingText, 'seo')
             : '';
         return basePrompt + contextInstruction;
     }
@@ -338,23 +277,10 @@ export function getDefaultPrompt(
                 result = result.replace(/{surroundingText}/g, '');
             }
 
-            // Replace {contextRule} and {contextData} placeholders
-            if (needsContext && options?.surroundingText) {
-                const contextRule = getContextInstruction(options.surroundingText, 'video', 'rule');
-                const contextData = getContextInstruction(options.surroundingText, 'video', 'data');
-                result = result.replace(/{contextRule}/g, contextRule);
-                result = result.replace(/{contextData}/g, contextData);
-            } else {
-                // Remove placeholders if no context available
-                result = result.replace(/{contextRule}/g, '');
-                result = result.replace(/{contextData}/g, '');
-            }
-
-            // Check if prompt contains legacy {context} placeholder
+            // Replace {context} placeholder with context instruction
             if (result.includes('{context}')) {
-                // Custom prompt with {context} placeholder - replace it with context instruction
                 const contextInstruction = (needsContext && options?.surroundingText)
-                    ? getContextInstruction(options.surroundingText, 'video', 'legacy')
+                    ? getContextInstruction(options.surroundingText, 'video')
                     : '';
                 result = result.replace(/{context}/g, contextInstruction);
             }
@@ -375,7 +301,7 @@ export function getDefaultPrompt(
         const basePrompt = buildVideoPrompt(lang, videoMode);
         const needsContext = needsSurroundingText('video', videoMode, customPrompts);
         const contextInstruction = (needsContext && options?.surroundingText)
-            ? getContextInstruction(options.surroundingText, 'video', 'legacy')
+            ? getContextInstruction(options.surroundingText, 'video')
             : '';
         return basePrompt + contextInstruction;
     }
@@ -400,23 +326,10 @@ export function getDefaultPrompt(
                 result = result.replace(/{surroundingText}/g, '');
             }
 
-            // Replace {contextRule} and {contextData} placeholders
-            if (needsContext && options?.surroundingText) {
-                const contextRule = getContextInstruction(options.surroundingText, 'a11y', 'rule');
-                const contextData = getContextInstruction(options.surroundingText, 'a11y', 'data');
-                result = result.replace(/{contextRule}/g, contextRule);
-                result = result.replace(/{contextData}/g, contextData);
-            } else {
-                // Remove placeholders if no context available
-                result = result.replace(/{contextRule}/g, '');
-                result = result.replace(/{contextData}/g, '');
-            }
-
-            // Check if prompt contains legacy {context} placeholder
+            // Replace {context} placeholder with context instruction
             if (result.includes('{context}')) {
-                // Custom prompt with {context} placeholder - replace it with context instruction
                 const contextInstruction = (needsContext && options?.surroundingText)
-                    ? getContextInstruction(options.surroundingText, 'a11y', 'legacy')
+                    ? getContextInstruction(options.surroundingText, 'a11y')
                     : '';
                 result = result.replace(/{context}/g, contextInstruction);
             }
@@ -437,7 +350,7 @@ export function getDefaultPrompt(
         const basePrompt = buildA11yPrompt(lang, charConstraint);
         const needsContext = needsSurroundingText('a11y', undefined, customPrompts);
         const contextInstruction = (needsContext && options?.surroundingText)
-            ? getContextInstruction(options.surroundingText, 'a11y', 'legacy')
+            ? getContextInstruction(options.surroundingText, 'a11y')
             : '';
         return basePrompt + contextInstruction;
     }
@@ -494,17 +407,7 @@ const SECTION_MAPPING_FLEXIBLE: Array<{ patterns: string[]; path: string; displa
         displayName: 'Video Description - Transcript'
     },
     {
-        patterns: ['contextrule', 'rule'],
-        path: 'context.rule',
-        displayName: 'Context Rule'
-    },
-    {
-        patterns: ['contextdata', 'data'],
-        path: 'context.data',
-        displayName: 'Context Data'
-    },
-    {
-        patterns: ['context'],
+        patterns: ['context', 'contextrule', 'rule', 'contextdata', 'data'],
         path: 'context',
         displayName: 'Context'
     },
@@ -552,7 +455,22 @@ function cleanMarkdownContent(content: string): string {
 }
 
 /**
- * Parse Markdown file and extract prompts by H1 sections
+ * Extract MODE metadata from HTML comment
+ * Supports formats:
+ * - <!-- MODE: seo -->
+ * - <!-- ==================== MODE: seo ==================== -->
+ * @param commentContent - Content before H1 heading
+ * @returns MODE value (lowercase) or null if not found
+ */
+function extractModeFromComment(commentContent: string): string | null {
+    // Match MODE: value inside HTML comment
+    const modeRegex = /<!--[\s\S]*?MODE:\s*([a-zA-Z0-9\-_]+)[\s\S]*?-->/i;
+    const match = commentContent.match(modeRegex);
+    return match ? match[1].toLowerCase().trim() : null;
+}
+
+/**
+ * Parse Markdown file and extract prompts by MODE comments and H1 sections
  * @param content - Raw markdown file content
  * @returns Parsed CustomPrompts object or null if invalid
  */
@@ -567,7 +485,7 @@ function parseMarkdownPrompts(content: string): CustomPrompts | null {
     // Split by H1 headers (# Section Name)
     // Use regex to find all H1 headers and their content
     const h1Regex = /^# (.+)$/gm;
-    const sections: Array<{ title: string; content: string }> = [];
+    const sections: Array<{ title: string; content: string; mode: string | null; beforeH1Content: string }> = [];
 
     let lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -577,13 +495,21 @@ function parseMarkdownPrompts(content: string): CustomPrompts | null {
         if (sections.length > 0) {
             const prevSection = sections[sections.length - 1];
             const rawContent = content.substring(lastIndex, match.index).trim();
-            prevSection.content = cleanMarkdownContent(rawContent);
+            prevSection.content = rawContent;
         }
+
+        // Extract content before H1 (for MODE comment detection)
+        const beforeH1Start = lastIndex;
+        const beforeH1End = match.index;
+        const beforeH1Content = content.substring(beforeH1Start, beforeH1End);
+        const mode = extractModeFromComment(beforeH1Content);
 
         // Add new section
         sections.push({
             title: match[1].trim(),
-            content: '' // Will be filled in next iteration or at end
+            content: '', // Will be filled in next iteration or at end
+            mode: mode,
+            beforeH1Content: beforeH1Content
         });
 
         lastIndex = match.index + match[0].length;
@@ -593,7 +519,7 @@ function parseMarkdownPrompts(content: string): CustomPrompts | null {
     if (sections.length > 0) {
         const lastSection = sections[sections.length - 1];
         const rawContent = content.substring(lastIndex).trim();
-        lastSection.content = cleanMarkdownContent(rawContent);
+        lastSection.content = rawContent;
     }
 
     if (sections.length === 0) {
@@ -603,20 +529,37 @@ function parseMarkdownPrompts(content: string): CustomPrompts | null {
 
     // Map sections to CustomPrompts structure
     for (const section of sections) {
-        const sectionMatch = findSectionMapping(section.title);
+        // For sections with MODE comment, use that for identification
+        let sectionMatch: { path: string; displayName: string } | null = null;
 
-        if (!sectionMatch) {
-            // Generate helpful error message with suggestions
-            const allValidPatterns = SECTION_MAPPING_FLEXIBLE.map(s => s.displayName);
-            console.warn(
-                `[ALT Generator] Unknown section title: "${section.title}"\n` +
-                `Valid section names (case-insensitive, spaces/hyphens optional):\n` +
-                allValidPatterns.map(p => `  - ${p}`).join('\n')
-            );
-            continue;
+        if (section.mode) {
+            // Match by MODE comment value
+            sectionMatch = findSectionMapping(section.mode);
+            if (!sectionMatch) {
+                console.warn(`[ALT Generator] Unknown MODE value: "${section.mode}"`);
+                continue;
+            }
+        } else {
+            // Fallback: Match by H1 title (backward compatibility)
+            sectionMatch = findSectionMapping(section.title);
+            if (!sectionMatch) {
+                // Generate helpful error message with suggestions
+                const allValidPatterns = SECTION_MAPPING_FLEXIBLE.map(s => s.displayName);
+                console.warn(
+                    `[ALT Generator] Unknown section title: "${section.title}"\n` +
+                    `Valid section names (case-insensitive, spaces/hyphens optional):\n` +
+                    allValidPatterns.map(p => `  - ${p}`).join('\n')
+                );
+                continue;
+            }
         }
 
-        if (section.content.trim() === '') {
+        // Build full prompt content: H1 + content (without HTML comments)
+        const h1Line = `# ${section.title}`;
+        const contentWithoutComments = cleanMarkdownContent(section.content);
+        const fullContent = `${h1Line}\n\n${contentWithoutComments}`.trim();
+
+        if (fullContent.trim() === h1Line.trim() || contentWithoutComments.trim() === '') {
             console.warn(`[ALT Generator] Empty content for section: "${section.title}"`);
             continue;
         }
@@ -629,7 +572,7 @@ function parseMarkdownPrompts(content: string): CustomPrompts | null {
             // Top-level property (e.g., "geminiApiModel" or "context" string)
             const key = pathParts[0] as keyof CustomPrompts;
             if (key === 'geminiApiModel') {
-                const modelValue = section.content.trim();
+                const modelValue = contentWithoutComments.trim();
                 if (modelValue === 'gemini-2.5-pro' || modelValue === 'gemini-2.5-flash') {
                     result[key] = modelValue;
                 } else {
@@ -637,7 +580,7 @@ function parseMarkdownPrompts(content: string): CustomPrompts | null {
                 }
             } else if (key === 'context') {
                 // Legacy string format for context
-                result[key] = section.content;
+                result[key] = fullContent;
             }
         } else if (pathParts.length === 2) {
             // Nested property (e.g., "imageAlt.seo" or "context.rule")
@@ -649,22 +592,14 @@ function parseMarkdownPrompts(content: string): CustomPrompts | null {
                     result.imageAlt = {};
                 }
                 if (childKey === 'seo' || childKey === 'a11y') {
-                    result.imageAlt[childKey] = section.content;
+                    result.imageAlt[childKey] = fullContent;
                 }
             } else if (parentKey === 'videoDescription') {
                 if (!result.videoDescription) {
                     result.videoDescription = {};
                 }
                 if (childKey === 'summary' || childKey === 'transcript' || childKey === 'standard' || childKey === 'detailed') {
-                    result.videoDescription[childKey as 'summary' | 'transcript' | 'standard' | 'detailed'] = section.content;
-                }
-            } else if (parentKey === 'context') {
-                // Object format for context
-                if (typeof result.context !== 'object' || result.context === null) {
-                    result.context = {};
-                }
-                if (childKey === 'rule' || childKey === 'data') {
-                    (result.context as { rule?: string; data?: string })[childKey] = section.content;
+                    result.videoDescription[childKey as 'summary' | 'transcript' | 'standard' | 'detailed'] = fullContent;
                 }
             }
         }
@@ -705,7 +640,7 @@ export function getGeminiApiModel(customPrompts?: CustomPrompts | null): string 
 export function loadCustomPrompts(): CustomPrompts | null {
     try {
         const config = vscode.workspace.getConfiguration('altGenGemini');
-        const customPromptsPath = config.get<string>('customPromptsPath', '.vscode/custom-prompts.md');
+        const customPromptsPath = config.get<string>('customFilePath', '.vscode/custom-prompts.md');
 
         // Get workspace folder
         const workspaceFolders = vscode.workspace.workspaceFolders;

@@ -162,7 +162,9 @@ Complete
 Advanced users can provide custom prompts via `.vscode/custom-prompts.md` (Markdown format):
 
 ```markdown
-# SEO
+<!-- ==================== MODE: seo ==================== -->
+# Generate SEO-Optimized Image ALT Text
+
 You are an SEO expert. Generate alt text optimized for search engines.
 
 ## Guidelines
@@ -176,9 +178,13 @@ You are an SEO expert. Generate alt text optimized for search engines.
 {languageConstraint}
 Output only the alt text.
 
-# A11Y
+---
+
+<!-- ==================== MODE: a11y ==================== -->
+# Generate Accessible Image ALT Text
+
 You are an accessibility expert. Generate alt text for visually impaired users.
-Maximum length: {charConstraint} characters.
+Maximum length: 125 characters.
 
 {context}
 
@@ -186,7 +192,11 @@ Maximum length: {charConstraint} characters.
 {languageConstraint}
 Output only the alt text.
 
-# Video
+---
+
+<!-- ==================== MODE: video ==================== -->
+# Generate Video ARIA Label
+
 Generate a short aria-label (max 10 words) for the video.
 Do not include the word "video".
 
@@ -196,79 +206,78 @@ Do not include the word "video".
 {languageConstraint}
 Output only the aria-label.
 
-# Video Detailed
-Generate a comprehensive video description (max 50 words).
+---
+
+<!-- ==================== MODE: transcript ==================== -->
+# Generate Video Transcript
+
+Generate a comprehensive video transcript (max 50 words).
 Include visual elements, actions, and key content.
 
 {context}
 
 ## Output Format
 {languageConstraint}
-Output only the description.
+Output only the transcript.
 
-# Context
-<!-- Context-aware generation instructions -->
+---
+
+<!-- ==================== MODE: context ==================== -->
+# Context Analysis
 
 ## Surrounding Text
 {surroundingText}
 
 ## Rules
-- If the surrounding text fully describes the {mediaType}, return: DECORATIVE
+- If the surrounding text fully describes the media, return: DECORATIVE
 - If the surrounding text partially describes it, provide only supplementary information
 - Otherwise, provide a complete description
 
-# Model
+---
+
+<!-- ==================== MODE: model ==================== -->
+# Gemini API Model Configuration
+
 gemini-2.5-flash
 ```
 
 **Structure Explanation:**
 
-- **H1 Sections**: Define different prompt types with **flexible, case-insensitive matching**
-  - **Image ALT (SEO mode)**: Any of these work:
-    - `# SEO` (shorthand, recommended)
-    - `# Image ALT - SEO` (full name)
-    - `# ImageAltSEO` (CamelCase)
-    - `# image_alt_seo` (snake_case)
-  - **Image ALT (A11Y mode)**: Any of these work:
-    - `# A11Y` (shorthand, recommended)
-    - `# Accessibility`
-    - `# Image ALT - A11Y` (full name)
-    - `# ImageAltA11Y` (CamelCase)
-  - **Video Description (Standard)**: Any of these work:
-    - `# Video` (shorthand, recommended)
-    - `# Video Standard`
-    - `# Video Description - Standard` (full name)
-  - **Video Description (Detailed)**: Any of these work:
-    - `# Video Detailed` (shorthand, recommended)
-    - `# Video Description - Detailed` (full name)
-  - **Context Rule**: Any of these work:
-    - `# Rule` (shorthand)
-    - `# Context Rule` (recommended)
-  - **Context Data**: Any of these work:
-    - `# Data` (shorthand)
-    - `# Context Data` (recommended)
-  - **Context (Legacy)**: `# Context` only (single string format)
-  - **Gemini API Model**: Any of these work:
-    - `# Model` (shorthand, recommended)
-    - `# Gemini API Model` (full name)
+- **TYPE Comments**: Each section starts with an HTML comment containing the section type
+  - Format: `<!-- ==================== MODE: <type> ==================== -->`
+  - The TYPE value identifies the section (e.g., `seo`, `a11y`, `video`, `transcript`, `context`, `model`)
+  - This allows H1 headings to be descriptive and meaningful for AI (sent to Gemini API)
+
+- **H1 Sections**: Define the actual prompt heading sent to Gemini API
+  - Can be any descriptive text (e.g., `# Generate SEO-Optimized Image ALT Text`)
+  - These headings are included in the prompt sent to the AI for better context
+  - Make them clear and instructive for optimal AI understanding
+
+- **Section Types**:
+  - **Image ALT (SEO mode)**: `MODE: seo`
+  - **Image ALT (A11Y mode)**: `MODE: a11y` (or `MODE: accessibility`)
+  - **Video Description (Standard)**: `MODE: video`
+  - **Video Transcript**: `MODE: transcript`
+  - **Context Analysis**: `MODE: context`
+  - **Gemini API Model**: `MODE: model`
 
 - **H2+ Sections**: Internal headings within prompts (passed to Gemini API as-is)
 
 - **Available Placeholders**:
-  - `{surroundingText}`: Replaced with extracted surrounding text (e.g., `<section><h2>Title</h2><p>Description</p></section>`)
-  - `{mediaType}`: Replaced with "image" or "video"
-  - `{charConstraint}`: Replaced with character constraint (A11Y only, e.g., "125")
-  - `{context}`: **Recommended** - Replaced with content from `# Context` section (includes surrounding text and rules)
-  - `{contextRule}`: Advanced - Replaced with content from `# Context Rule` section only
-  - `{contextData}`: Advanced - Replaced with content from `# Context Data` section only
-  - `{languageConstraint}`: Replaced with language constraint (e.g., "Respond only in Japanese.")
+  - `{context}`: Complete context section including surrounding text and analysis rules
+  - `{surroundingText}`: Extracted surrounding HTML/JSX text only (can be used directly in prompt sections)
+  - `{languageConstraint}`: Language constraint (e.g., "Respond only in Japanese.")
     - Allows controlling where language constraint appears in custom prompts
     - If omitted, language constraint is appended to end (backward compatibility)
 
-- **Context Placeholder Behavior**:
-  - **`{context}` (Recommended)**: Use this in your prompt sections (e.g., `# SEO`, `# A11Y`) to insert the entire `# Context` section. This is the simplest approach for most users.
-  - **`{contextRule}` + `{contextData}` (Advanced)**: Use these if you want fine-grained control over where rules and data appear separately in your prompts.
-  - **Automatic Activation**: If any of `{context}`, `{surroundingText}`, `{contextRule}`, or `{contextData}` appears in custom prompts, context analysis is automatically enabled (even if `contextAnalysisEnabled` setting is `false`).
+- **Automatic Context Analysis**:
+  - If `{context}` or `{surroundingText}` placeholder appears in custom prompts, context analysis is automatically enabled (even if `contextAnalysisEnabled` setting is `false`)
+  - Context includes surrounding HTML text and redundancy detection rules
+
+- **Backward Compatibility**:
+  - Old H1-based section matching (without MODE comments) still works for existing users
+  - If MODE comment is present, it takes priority over H1 matching
+  - This allows gradual migration to the new format
 
 - **Security Features**:
   - Path traversal protection (files must be within workspace)
@@ -362,13 +371,13 @@ All settings are under the `altGenGemini.*` namespace:
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `geminiApiKey` | string | "" | Encrypted API key (stored in SecretStorage) |
-| `generationMode` | enum | "SEO" | SEO or A11Y optimization |
+| `altGenerationMode` | enum | "SEO" | SEO or A11Y optimization |
 | `insertionMode` | enum | "confirm" | Auto or Manual insertion |
 | `outputLanguage` | enum | "auto" | Auto, Japanese, or English |
 | `contextAnalysisEnabled` | boolean | false | Enable context-aware generation |
 | `decorativeKeywords` | array | ["icon-", "bg-", "deco-"] | Keywords for decorative image detection |
-| `videoDescriptionLength` | enum | "standard" | Standard (aria-label) or Detailed (comment) |
-| `customPromptsPath` | string | ".vscode/custom-prompts.md" | Path to custom prompts Markdown file |
+| `videoDescriptionMode` | enum | "standard" | Standard (aria-label) or Transcript (comment) |
+| `customFilePath` | string | ".vscode/custom-prompts.md" | Path to custom prompts Markdown file |
 
 **Note:** The Gemini API model is no longer configurable via settings. By default, the extension uses `gemini-2.5-flash`. To use `gemini-2.5-pro`, add a `# Gemini API Model` section with `gemini-2.5-pro` in your custom prompts Markdown file.
 

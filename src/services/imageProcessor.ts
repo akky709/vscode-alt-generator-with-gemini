@@ -363,7 +363,7 @@ export async function processSingleImageTag(
     }
 
     const config = vscode.workspace.getConfiguration('altGenGemini');
-    const generationMode = config.get<string>('generationMode', 'SEO');
+    const generationMode = config.get<string>('altGenerationMode', 'SEO');
 
     // Load custom prompts once for all subsequent operations
     const customPrompts = loadCustomPrompts();

@@ -4,15 +4,13 @@
 
   "command.generateAlt": "Generate ALT for images",
   "command.generateVideoAriaLabel": "Generate ARIA-LABEL or description for videos",
-  "command.clearApiKey": "Clear Gemini API Key",
+  "command.setApiKey": "ALT Generator: Set Gemini API Key",
+  "command.clearApiKey": "ALT Generator: Clear Gemini API Key",
 
-  "config.geminiApiKey.description": "Gemini API Key",
-  "config.geminiApiKey.markdownDescription": "Gemini API Key ([Get API key from Google AI Studio](https://aistudio.google.com/app/api-keys))  \n\n**Note:** The API key is stored securely and displayed as dots for security.  \n[Clear API Key](command:alt-generator.clearApiKey)",
-
-  "config.generationMode.description": "[Image] Set what to prioritize when generating ALT text",
-  "config.generationMode.markdownDescription": "[Image] Set what to prioritize when generating ALT text.",
-  "config.generationMode.enum.seo": "SEO: Generate ALT text focused on search engine optimization (SEO)",
-  "config.generationMode.enum.a11y": "A11Y: Generate ALT text focused on accessibility (A11Y) improvement",
+  "config.altGenerationMode.description": "ALT Generation Mode",
+  "config.altGenerationMode.markdownDescription": "[Image] Set what to prioritize when generating ALT text.",
+  "config.altGenerationMode.enum.seo": "SEO: Generate ALT text focused on search engine optimization (SEO)",
+  "config.altGenerationMode.enum.a11y": "A11Y: Generate ALT text focused on accessibility (A11Y) improvement",
 
   "config.insertionMode.description": "Set how to insert generated text",
   "config.insertionMode.markdownDescription": "Set how to insert generated text.",
@@ -27,11 +25,11 @@
   "config.contextAnalysisEnabled.description": "Analyze surrounding text to prevent redundancy",
   "config.contextAnalysisEnabled.markdownDescription": "Analyze surrounding text of images and videos. If already described by surrounding text, automatically sets `alt=\"\"` to prevent duplicate descriptions for screen readers.",
 
-  "config.videoDescriptionLength.description": "[Video] Set the detail level of generated text. Use transcript mode for creating text manuscripts for audio descriptions, etc",
-  "config.videoDescriptionLength.markdownDescription": "[Video] Set the detail level of generated text. Use transcript mode for creating text manuscripts for audio descriptions, etc.",
-  "config.videoDescriptionLength.enum.summary": "Summary: A concise label to identify what the video is before playing it",
-  "config.videoDescriptionLength.enum.transcript": "Transcript: A complete transcription including visual information to fully understand the video content",
+  "config.videoDescriptionMode.description": "Video Description Mode",
+  "config.videoDescriptionMode.markdownDescription": "[Video] Set the detail level of generated text. Use transcript mode for creating text manuscripts for audio descriptions, etc.",
+  "config.videoDescriptionMode.enum.summary": "Summary: A concise label to identify what the video is before playing it",
+  "config.videoDescriptionMode.enum.transcript": "Transcript: A complete transcription including visual information to fully understand the video content",
 
-  "config.customPromptsPath.description": "Custom Prompts File Path",
-  "config.customPromptsPath.markdownDescription": "Path to a Markdown file containing custom prompts for ALT text and video description generation. Specify as a relative path from the workspace root.  \n\n**Example:** `.vscode/custom-prompts.md`  \n\n**Important:** This file allows you to customize prompts using Markdown format with H1 sections. You can also specify the Gemini API model. If the file is not found, the extension's default prompts will be used. See documentation for the file format."
+  "config.customFilePath.description": "Custom File Path",
+  "config.customFilePath.markdownDescription": "Path to a Markdown file for customizing Gemini prompts and API model. Specify as a relative path from the workspace root.  \n\n**Example:** `.vscode/custom-prompts.md`"
 }

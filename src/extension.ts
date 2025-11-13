@@ -20,14 +20,8 @@ import { needsSurroundingText } from './core/prompts';
 import { SELECTION_THRESHOLDS, MASKING, BATCH_PROCESSING, CONTEXT_RANGE_VALUES } from './constants';
 
 export async function activate(context: vscode.ExtensionContext) {
-    // Mask API key on startup
-    await maskApiKeyInSettings(context);
-
-    // Watch for configuration changes to save and mask API key
+    // Watch for configuration changes
     const configWatcher = vscode.workspace.onDidChangeConfiguration(async (e) => {
-        if (e.affectsConfiguration('altGenGemini.geminiApiKey')) {
-            await handleApiKeyChange(context);
-        }
         // Clear output language cache when output language setting changes
         if (e.affectsConfiguration('altGenGemini.outputLanguage')) {
             clearOutputLanguageCache();
@@ -113,7 +107,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     } else {
                         // Get video description length mode to customize message
                         const config = vscode.workspace.getConfiguration('altGenGemini');
-                        const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'summary');
+                        const videoDescriptionLength = config.get<string>('videoDescriptionMode', 'summary');
 
                         // Show confirmation dialog with appropriate message
                         const message = videoDescriptionLength === 'transcript'
@@ -146,100 +140,41 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(videoDisposable);
 
-    // Command to completely delete API key (for debugging)
+    // Command to set API key via input box
+    let setApiKeyDisposable = vscode.commands.registerCommand('alt-generator.setApiKey', async () => {
+        const apiKey = await vscode.window.showInputBox({
+            prompt: 'Enter your Gemini API Key',
+            placeHolder: 'AIza...',
+            password: true,
+            ignoreFocusOut: true,
+            validateInput: (value) => {
+                if (!value || value.trim() === '') {
+                    return 'API Key cannot be empty';
+                }
+                if (!value.startsWith('AIza')) {
+                    return 'Invalid API Key format. Gemini API keys typically start with "AIza"';
+                }
+                return null;
+            }
+        });
+
+        if (apiKey) {
+            await context.secrets.store('altGenGemini.geminiApiKey', apiKey);
+            vscode.window.showInformationMessage('✅ Gemini API Key saved securely');
+            console.log('[ALT Generator] API key set via command palette');
+        }
+    });
+
+    context.subscriptions.push(setApiKeyDisposable);
+
+    // Command to clear API key
     let clearApiKeyDisposable = vscode.commands.registerCommand('alt-generator.clearApiKey', async () => {
         await context.secrets.delete('altGenGemini.geminiApiKey');
-        const config = vscode.workspace.getConfiguration('altGenGemini');
-        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
-        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
-        vscode.window.showInformationMessage('✅ API Key cleared from all storage locations');
-        console.log('[ALT Generator] API key manually cleared');
+        vscode.window.showInformationMessage('✅ Gemini API Key cleared');
+        console.log('[ALT Generator] API key cleared');
     });
 
     context.subscriptions.push(clearApiKeyDisposable);
-}
-
-// Handle API key changes in configuration
-async function handleApiKeyChange(context: vscode.ExtensionContext): Promise<void> {
-    const config = vscode.workspace.getConfiguration('altGenGemini');
-    const displayedKey = config.get<string>('geminiApiKey', '');
-
-    // Debug: API key change event
-    // console.log('[ALT Generator] handleApiKeyChange called');
-    // console.log('[ALT Generator] displayedKey:', displayedKey ? `${displayedKey.substring(0, 4)}...` : 'empty');
-
-    // Delete API key if empty
-    if (!displayedKey || displayedKey.trim() === '') {
-        // console.log('[ALT Generator] Deleting API key from secrets...');
-        await context.secrets.delete('altGenGemini.geminiApiKey');
-        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Global);
-        await config.update('geminiApiKey', undefined, vscode.ConfigurationTarget.Workspace);
-        // console.log('[ALT Generator] API key deleted successfully');
-        vscode.window.showInformationMessage('✅ API Key deleted from settings');
-        return;
-    }
-
-    // Skip if already masked (contains *, ., or •)
-    if (displayedKey.includes('*') || displayedKey.includes('•') || /^\.+/.test(displayedKey)) {
-        // console.log('[ALT Generator] API key is already masked, skipping...');
-        return;
-    }
-
-    // console.log('[ALT Generator] Storing new API key...');
-    // Save as new API key
-    await context.secrets.store('altGenGemini.geminiApiKey', displayedKey);
-
-    // Display with mask (fixed-length mask for better security)
-    const maskedKey = displayedKey.length > MASKING.MIN_LENGTH_FOR_VISIBLE
-        ? MASKING.MASK_CHAR + displayedKey.substring(displayedKey.length - MASKING.VISIBLE_CHARS)
-        : MASKING.MASK_CHAR;
-
-    await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
-    await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
-    // console.log('[ALT Generator] New API key stored and masked');
-}
-
-// Mask API key on startup
-async function maskApiKeyInSettings(context: vscode.ExtensionContext): Promise<void> {
-    const config = vscode.workspace.getConfiguration('altGenGemini');
-    const displayedKey = config.get<string>('geminiApiKey', '');
-    const storedKey = await context.secrets.get('altGenGemini.geminiApiKey');
-
-    // Debug: API key masking on startup
-    // console.log('[ALT Generator] maskApiKeyInSettings called');
-    // console.log('[ALT Generator] displayedKey length:', displayedKey.length);
-    // console.log('[ALT Generator] storedKey exists:', !!storedKey);
-
-    // Delete from Secrets if settings screen is empty (handles direct settings.json edit)
-    if (!displayedKey || displayedKey.trim() === '') {
-        if (storedKey && storedKey.trim() !== '') {
-            await context.secrets.delete('altGenGemini.geminiApiKey');
-        }
-        return;
-    }
-
-    // Check if unmasked raw API key exists in settings
-    const isAlreadyMasked = displayedKey.includes('*') || displayedKey.includes('•') || /^\.+/.test(displayedKey);
-    // console.log('[ALT Generator] isAlreadyMasked:', isAlreadyMasked);
-
-    if (!isAlreadyMasked) {
-        // console.log('[ALT Generator] Masking API key...');
-        // Save to Secrets
-        await context.secrets.store('altGenGemini.geminiApiKey', displayedKey);
-
-        // Convert to masked display (fixed-length mask for better security)
-        const maskedKey = displayedKey.length > MASKING.MIN_LENGTH_FOR_VISIBLE
-            ? MASKING.MASK_CHAR + displayedKey.substring(displayedKey.length - MASKING.VISIBLE_CHARS)
-            : MASKING.MASK_CHAR;
-
-        // console.log('[ALT Generator] Masked key:', maskedKey);
-
-        // Update both Global and Workspace
-        await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Global);
-        await config.update('geminiApiKey', maskedKey, vscode.ConfigurationTarget.Workspace);
-
-        // console.log('[ALT Generator] API key masked successfully');
-    }
 }
 
 /**
@@ -303,8 +238,8 @@ async function processMultipleTags(
     // Pre-fetch configuration for batch processing optimization
     const insertionMode = getInsertionMode();
     const config = vscode.workspace.getConfiguration('altGenGemini');
-    const generationMode = config.get<string>('generationMode', 'SEO');
-    const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'summary') as 'summary' | 'transcript';
+    const generationMode = config.get<string>('altGenerationMode', 'SEO');
+    const videoDescriptionLength = config.get<string>('videoDescriptionMode', 'summary') as 'summary' | 'transcript';
 
     // Check if any custom prompts need surrounding text
     const promptType = generationMode === 'SEO' ? 'seo' : 'a11y';
@@ -442,7 +377,7 @@ async function processMultipleTags(
                                 const replacedLength = replacedEndOffset - replacedStartOffset;
 
                                 // Get video description length mode to customize message
-                                const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'summary');
+                                const videoDescriptionLength = config.get<string>('videoDescriptionMode', 'summary');
 
                                 // Show individual confirmation dialog with appropriate message
                                 const message = videoDescriptionLength === 'transcript'

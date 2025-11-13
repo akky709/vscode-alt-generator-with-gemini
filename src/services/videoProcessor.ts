@@ -226,7 +226,7 @@ export async function processSingleVideoTag(
     }
 
     const config = vscode.workspace.getConfiguration('altGenGemini');
-    const videoDescriptionLength = config.get<string>('videoDescriptionLength', 'summary') as 'summary' | 'transcript';
+    const videoDescriptionLength = config.get<string>('videoDescriptionMode', 'summary') as 'summary' | 'transcript';
 
     // Load custom prompts once for all subsequent operations
     const customPrompts = loadCustomPrompts();

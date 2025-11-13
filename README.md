@@ -14,7 +14,7 @@ Automatically generate ALT attributes for img tags and aria-label attributes for
 
 #### 🎬 Video aria-label Generation
 - Generate aria-label attributes for `<video>` tags
-- Two modes: **Standard** (short aria-label) and **Detailed** (comprehensive description as HTML comment)
+- Two modes: **Standard** (short aria-label) and **Transcript** (comprehensive description as HTML comment)
 - Supports `<source>` tags within `<video>` elements
 - File-type aware comments (HTML, JSX/TSX, PHP)
 
@@ -144,41 +144,48 @@ The extension automatically detects modern React frameworks and resolves root pa
 2. Click "Create API Key"
 3. Copy the API key
 
-### 2. Configure Extension
+### 2. Set API Key
+
+**Required: Set your Gemini API key via Command Palette**
+
+1. Press `Cmd+Shift+P` (Windows: `Ctrl+Shift+P`) to open Command Palette
+2. Type **"ALT Generator: Set Gemini API Key"** and select it
+3. Paste your API key in the secure input box
+4. Press Enter
+
+**🔐 API Key Security:**
+- Your API key is **encrypted** and stored in your OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- **Never stored in `settings.json`** or any plain text file
+- Cannot be accessed by other extensions or applications
+
+**To clear your API key:**
+- Open Command Palette and run **"ALT Generator: Clear Gemini API Key"**
+
+### 3. Configure Extension (Optional)
 
 Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
 
-**Required:**
-- **Gemini API Key**: Paste your API key
-
-**Optional:**
-- **Generation Mode**: SEO or A11Y (default: SEO)
+**Available Settings:**
+- **ALT Generation Mode**: SEO or A11Y (default: SEO)
 - **Insertion Mode**: Auto or Manual (default: Manual - review before insertion)
 - **Output Language**: Auto, Japanese, or English (default: Auto)
 - **Context Analysis Enabled**: Enable context-aware generation (default: false)
 - **Decorative Keywords**: Customize keywords for decorative image detection
-- **Video Description Length**: Standard (aria-label) or Detailed (HTML comment) (default: Standard)
-- **Custom Prompts Path**: Path to custom prompts Markdown file (default: `.vscode/custom-prompts.md`)
+- **Video Description Mode**: Summary (aria-label) or Transcript (HTML comment) (default: Summary)
+- **Custom File Path**: Path to custom prompts Markdown file (default: `.vscode/custom-prompts.md`)
 
 Or edit `settings.json`:
 ```json
 {
-  "altGenGemini.geminiApiKey": "YOUR_API_KEY",
-  "altGenGemini.generationMode": "SEO",
+  "altGenGemini.altGenerationMode": "SEO",
   "altGenGemini.insertionMode": "confirm",
   "altGenGemini.outputLanguage": "auto",
   "altGenGemini.contextAnalysisEnabled": false,
   "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"],
-  "altGenGemini.videoDescriptionLength": "standard",
-  "altGenGemini.customPromptsPath": ".vscode/custom-prompts.md"
+  "altGenGemini.videoDescriptionMode": "summary",
+  "altGenGemini.customFilePath": ".vscode/custom-prompts.md"
 }
 ```
-
-**🔐 API Key Security Note:**
-After entering your API key in settings, it will be automatically:
-- Encrypted and stored in VSCode's secure storage (Secrets API)
-- Masked in the settings UI (displayed as `••••••••xxxx`)
-- Never stored in plain text in `settings.json`
 
 ## Usage
 
@@ -241,8 +248,8 @@ The extension supports two insertion modes for both **images (ALT)** and **video
 - Inserted as `aria-label` attribute on the `<video>` tag
 - Follows accessibility best practices
 
-**Detailed Mode:**
-- Generates comprehensive description (max 100 words) with accurate transcription of all dialogue and narration, plus important visual information
+**Transcript Mode:**
+- Generates comprehensive transcript (max 100 words) with accurate transcription of all dialogue and narration, plus important visual information
 - Inserted as an HTML comment near the video tag (not as aria-label)
 - Comment format automatically adapts to file type:
   - HTML: `<!-- Video description: ... -->`
@@ -322,121 +329,37 @@ When **Context Analysis Enabled** is turned on in settings, the extension analyz
 
 ### Custom Prompts (Advanced)
 
-For advanced users, this extension supports custom prompt configuration using **Markdown format** to fine-tune AI-generated text according to your specific requirements.
+Want to customize how the AI generates descriptions? Create `.vscode/custom-prompts.md` in your workspace.
 
-You can specify a custom prompts file path in the extension settings. By default, the extension looks for `.vscode/custom-prompts.md` in your workspace.
-
-**Example Structure:**
+**Basic Format:**
 
 ```markdown
-# Image ALT - SEO
+<!-- ==================== MODE: seo ==================== -->
+# Your Instructions
 
-You are an SEO expert. Generate alt text optimized for search engines.
-
-## Guidelines
-- Include relevant keywords naturally
-- Be specific and concise
-- Avoid keyword stuffing
+Write custom instructions for the AI here...
 
 {context}
 
 ## Output Format
 {languageConstraint}
 Output only the alt text.
-
----
-
-# Image ALT - A11Y
-
-You are an accessibility expert. Generate alt text for visually impaired users.
-Maximum length: {charConstraint} characters.
-
-{context}
-
-## Output Format
-{languageConstraint}
-Output only the alt text.
-
----
-
-# Video Description - Standard
-
-Generate a short aria-label (max 10 words) for the video.
-Do not include the word "video".
-
-{context}
-
-## Output Format
-{languageConstraint}
-Output only the aria-label.
-
----
-
-# Video Description - Detailed
-
-Generate a comprehensive video description (max 50 words).
-Include visual elements, actions, and key content.
-
-{context}
-
-## Output Format
-{languageConstraint}
-Output only the description.
-
----
-
-# Context
-
-<!-- Context-aware generation instructions -->
-
-## Surrounding Text
-{surroundingText}
-
-## Rules
-- If the surrounding text fully describes the {mediaType}, return: DECORATIVE
-- If the surrounding text partially describes it, provide only supplementary information
-- Otherwise, provide a complete description
-
----
-
-# Gemini API Model
-
-gemini-2.5-flash
 ```
 
-**Explanation:**
+**Available Modes:**
+- `seo` - For SEO-optimized descriptions
+- `a11y` - For accessibility-focused descriptions
+- `video` - For short video aria-labels
+- `transcript` - For detailed video transcripts
+- `context` - For context analysis rules
+- `model` - To select AI model (`gemini-2.5-flash` or `gemini-2.5-pro`)
 
-- **H1 Sections** (case-insensitive): Define different prompt types
-  - `# Image ALT - SEO` (or shorthand: `# SEO`): SEO-optimized ALT text prompt
-  - `# Image ALT - A11Y` (or shorthand: `# A11Y`): Accessibility-optimized ALT text prompt
-  - `# Video Description - Standard` (or shorthand: `# Video`): Short aria-label prompt
-  - `# Video Description - Detailed` (or shorthand: `# Video Detailed`): Comprehensive description prompt
-  - `# Context`: Combined context rules and data (recommended approach)
-  - `# Context Rule` (advanced): Rules for handling surrounding text
-  - `# Context Data` (advanced): Data section for surrounding text
-  - `# Gemini API Model` (or shorthand: `# Model`): Specify model (`gemini-2.5-pro` or `gemini-2.5-flash`)
+**Optional Placeholders:**
+- `{context}` - Includes surrounding text analysis (auto-enables context mode)
+- `{surroundingText}` - Raw surrounding HTML/JSX text
+- `{languageConstraint}` - Adds language constraint (e.g., "Respond only in Japanese")
 
-- **H2+ Sections**: Internal headings within prompts (passed to AI as-is)
-
-- **Horizontal Lines** (`---`): Visual separators (removed before sending to AI)
-
-- **HTML Comments** (`<!-- ... -->`): Notes for yourself (removed before sending to AI)
-
-- **Available Placeholders**:
-  - `{context}`: **Recommended** - Inserts entire `# Context` section content (simplest approach)
-  - `{surroundingText}`: Replaced with extracted surrounding text (e.g., `<section><h2>Title</h2></section>`)
-  - `{mediaType}`: Replaced with "image" or "video"
-  - `{charConstraint}`: Replaced with character constraint (A11Y only, e.g., "125")
-  - `{languageConstraint}`: Replaced with language constraint (e.g., "Respond only in Japanese.")
-  - `{contextRule}`: Advanced - Inserts `# Context Rule` section content only
-  - `{contextData}`: Advanced - Inserts `# Context Data` section content only
-
-- **How Context Works**:
-  - Use `{context}` in your prompt sections (`# SEO`, `# A11Y`, etc.) to insert the entire `# Context` section
-  - The `# Context` section should contain `{surroundingText}` and any rules you want applied
-  - Context analysis is automatically enabled when any context placeholder is detected
-
-All sections are optional. If not provided, the extension's default prompts will be used.
+**Tip:** Each MODE section is optional. The extension uses built-in defaults for any missing sections.
 
 ## Notes
 

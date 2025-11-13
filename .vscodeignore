@@ -19,6 +19,7 @@ tsconfig.json
 
 # Documentation (already in README.md)
 .editorconfig
+CLAUDE.md
 
 # OS files
 .DS_Store
@@ -39,6 +40,9 @@ node_modules/**
 .npmignore
 npm-debug.log
 yarn-error.log
+
+# Claude Code (development only)
+.claude/**
 
 # User-specific files (exclude actual config, but include example)
 .vscode/alt-prompts.json

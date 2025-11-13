@@ -104,7 +104,7 @@ Path resolution for frameworks:
 
 ### Context Analysis
 
-When context analysis is enabled (via `contextAnalysisEnabled` setting or custom prompts with `{surroundingText}`, `{context}`, `{contextRule}`, or `{contextData}` placeholders), the extension analyzes surrounding elements:
+When context analysis is enabled (via `contextAnalysisEnabled` setting or custom prompts with `{surroundingText}` or `{context}` placeholder), the extension analyzes surrounding elements:
 
 1. **Parent Elements**: Extracts text from container elements (div, section, article, etc.)
 2. **Sibling Elements**: Analyzes adjacent elements for context clues

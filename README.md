@@ -1,20 +1,20 @@
 # ALT Generator with Gemini
 
-Automatically generate ALT attributes for img tags and aria-label attributes for video tags using Gemini API.
+Automatically generate ALT attributes for img tags, aria-label attributes for video tags, and transcript text using Gemini API.
 
 ## Features
 
 ### 🎯 Basic Features (Available to All Users)
 
-#### 🖼️ Image ALT Attribute Generation
+#### 🖼️ ALT Generation
 - Automatically generate ALT attributes for `<img>` and `<Image>` tags
 - Two generation modes: **SEO** (search engine optimized) and **A11Y** (accessibility optimized)
 - Batch processing support
 - Automatic decorative image detection by filename keywords (e.g., `icon-`, `bg-`)
 
-#### 🎬 Video aria-label Generation
+#### 🎬 Video aria-label and Transcript Generation
 - Generate aria-label attributes for `<video>` tags
-- Two modes: **Standard** (short aria-label) and **Transcript** (comprehensive description as HTML comment)
+- Two generation modes: **Summary** (short aria-label) and **Transcript** (transcript text as HTML comment)
 - Supports `<source>` tags within `<video>` elements
 - File-type aware comments (HTML, JSX/TSX, PHP)
 
@@ -76,6 +76,57 @@ Want even more control? Use **Custom Prompts** to unlock:
 - **Optimized Performance**: Pre-compiled regex patterns and memoized functions
 - **Type-Safe API Responses**: Fully typed Gemini API response handling prevents runtime errors
 - **Cancel Support**: Stop processing anytime during batch operations
+## Quick Start
+
+### 1. Get Gemini API Key
+
+1. Visit [Google AI Studio](https://aistudio.google.com/app/api-keys)
+2. Click "Create API Key"
+3. Copy the API key
+
+### 2. Set API Key
+
+**Required: Set your Gemini API key via Command Palette**
+
+1. Press `Cmd+Shift+P` (Windows: `Ctrl+Shift+P`) to open Command Palette
+2. Type **"ALT Generator: Set Gemini API Key"** and select it
+3. Paste your API key in the secure input box
+4. Press Enter
+
+**🔐 API Key Security:**
+- Your API key is **encrypted** and stored in your OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- **Never stored in `settings.json`** or any plain text file
+- Cannot be accessed by other extensions or applications
+
+**To clear your API key:**
+- Open Command Palette and run **"ALT Generator: Clear Gemini API Key"**
+
+### 3. Configure Extension (Optional)
+
+Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
+
+**Available Settings:**
+- **ALT Generation Mode**: SEO or A11Y (default: SEO)
+- **Insertion Mode**: Auto or Manual (default: Manual - review before insertion)
+- **Output Language**: Auto, Japanese, or English (default: Auto)
+- **Context Analysis Enabled**: Enable context-aware generation (default: false)
+- **Decorative Keywords**: Customize keywords for decorative image detection
+- **Video Description Mode**: Summary (aria-label) or Transcript (HTML comment) (default: Summary)
+- **Custom File Path**: Path to custom prompts Markdown file
+
+Or edit `settings.json`:
+```json
+{
+  "altGenGemini.altGenerationMode": "SEO",
+  "altGenGemini.insertionMode": "confirm",
+  "altGenGemini.outputLanguage": "auto",
+  "altGenGemini.contextAnalysisEnabled": false,
+  "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"],
+  "altGenGemini.videoDescriptionMode": "summary",
+  "altGenGemini.customFilePath": ".vscode/custom-prompts.md"
+}
+```
+
 
 ## Supported Files
 
@@ -136,57 +187,6 @@ The extension automatically detects modern React frameworks and resolves root pa
 <Image src="logo.png" alt="" />   // Error: Image not found
 ```
 
-## Quick Start
-
-### 1. Get Gemini API Key
-
-1. Visit [Google AI Studio](https://aistudio.google.com/app/api-keys)
-2. Click "Create API Key"
-3. Copy the API key
-
-### 2. Set API Key
-
-**Required: Set your Gemini API key via Command Palette**
-
-1. Press `Cmd+Shift+P` (Windows: `Ctrl+Shift+P`) to open Command Palette
-2. Type **"ALT Generator: Set Gemini API Key"** and select it
-3. Paste your API key in the secure input box
-4. Press Enter
-
-**🔐 API Key Security:**
-- Your API key is **encrypted** and stored in your OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-- **Never stored in `settings.json`** or any plain text file
-- Cannot be accessed by other extensions or applications
-
-**To clear your API key:**
-- Open Command Palette and run **"ALT Generator: Clear Gemini API Key"**
-
-### 3. Configure Extension (Optional)
-
-Press `Cmd+,` (Windows: `Ctrl+,`) and search for "Alt Generator"
-
-**Available Settings:**
-- **ALT Generation Mode**: SEO or A11Y (default: SEO)
-- **Insertion Mode**: Auto or Manual (default: Manual - review before insertion)
-- **Output Language**: Auto, Japanese, or English (default: Auto)
-- **Context Analysis Enabled**: Enable context-aware generation (default: false)
-- **Decorative Keywords**: Customize keywords for decorative image detection
-- **Video Description Mode**: Summary (aria-label) or Transcript (HTML comment) (default: Summary)
-- **Custom File Path**: Path to custom prompts Markdown file (default: `.vscode/custom-prompts.md`)
-
-Or edit `settings.json`:
-```json
-{
-  "altGenGemini.altGenerationMode": "SEO",
-  "altGenGemini.insertionMode": "confirm",
-  "altGenGemini.outputLanguage": "auto",
-  "altGenGemini.contextAnalysisEnabled": false,
-  "altGenGemini.decorativeKeywords": ["icon-", "bg-", "deco-"],
-  "altGenGemini.videoDescriptionMode": "summary",
-  "altGenGemini.customFilePath": ".vscode/custom-prompts.md"
-}
-```
-
 ## Usage
 
 ### Generate ALT for Images
@@ -223,7 +223,7 @@ Or edit `settings.json`:
 
 ### Insertion Modes
 
-The extension supports two insertion modes for both **images (ALT)** and **videos (aria-label/descriptions)**:
+The extension supports two insertion modes for both **images (ALT)** and **videos (aria-label/transcript text)**:
 
 **Manual Mode (Default):**
 - Generated text is shown in a preview dialog before insertion
@@ -243,13 +243,13 @@ The extension supports two insertion modes for both **images (ALT)** and **video
 
 ### Video Description Modes
 
-**Standard Mode (Default):**
+**Summary Mode (Default):**
 - Generates a short aria-label (max 10 words) describing the video's purpose or function
 - Inserted as `aria-label` attribute on the `<video>` tag
 - Follows accessibility best practices
 
 **Transcript Mode:**
-- Generates comprehensive transcript (max 100 words) with accurate transcription of all dialogue and narration, plus important visual information
+- Generates comprehensive transcript with accurate transcription of all dialogue and narration, plus important visual information
 - Inserted as an HTML comment near the video tag (not as aria-label)
 - Comment format automatically adapts to file type:
   - HTML: `<!-- Video description: ... -->`
@@ -320,11 +320,10 @@ When **Context Analysis Enabled** is turned on in settings, the extension analyz
 - Analyzes sibling elements before and after the image
 - Intelligently detects redundant descriptions (returns `alt=""` when context already describes the image)
 
-**Note:** Context analysis can also be enabled through custom prompts by including any of these placeholders: `{context}`, `{surroundingText}`, `{contextRule}`, or `{contextData}`.
+**Note:** Context analysis can also be enabled through custom prompts by including either `{context}` or `{surroundingText}` placeholder.
 
 ### Recommended Settings
 - **For best accuracy**: Enable "Context Analysis Enabled"
-- **For faster processing**: Disable context analysis
 - **For large batches**: Use "Manual" insertion mode to review before applying
 
 ### Custom Prompts (Advanced)
@@ -338,8 +337,6 @@ Want to customize how the AI generates descriptions? Create `.vscode/custom-prom
 # Your Instructions
 
 Write custom instructions for the AI here...
-
-{context}
 
 ## Output Format
 {languageConstraint}

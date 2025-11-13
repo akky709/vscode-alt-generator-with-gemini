@@ -1,5 +1,5 @@
 {
-  "name": "alt-tag-generator",
+  "name": "gemini-alt-generator",
   "displayName": "%displayName%",
   "description": "%description%",
   "version": "1.0.0",
@@ -8,10 +8,10 @@
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/akky709/vscode-alt-generator-with-gemini"
+    "url": "https://github.com/akky709/gemini-alt-generator"
   },
   "bugs": {
-    "url": "https://github.com/akky709/vscode-alt-generator-with-gemini/issues"
+    "url": "https://github.com/akky709/gemini-alt-generator/issues"
   },
   "homepage": "https://note.com/akky709",
   "keywords": [
